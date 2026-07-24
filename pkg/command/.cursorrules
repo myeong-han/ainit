@@ -1,0 +1,3 @@
+# Cursor Rules Configuration
+- Always read AGENTS.md before making any code modifications.
+- Execute unit tests (make test) before finalizing any changes.

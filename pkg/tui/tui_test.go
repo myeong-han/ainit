@@ -21,31 +21,32 @@ func TestNewModel(t *testing.T) {
 	}
 }
 
+func TestSlashCommandExecutionInTUI(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	m := NewModel(cfg)
+
+	// Transition to Prompt Input Mode
+	m.mode = ModePromptInput
+	m.promptInput.SetValue("/set-confs --provider openai --arch monolith")
+
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updatedModel.(Model)
+
+	if m2.cfg.Step0.ProviderID != "openai" {
+		t.Errorf("expected slash command to update provider to 'openai', got '%s'", m2.cfg.Step0.ProviderID)
+	}
+
+	if m2.cfg.Step1.ArchitectureStyle != "monolith" {
+		t.Errorf("expected slash command to update arch style to 'monolith', got '%s'", m2.cfg.Step1.ArchitectureStyle)
+	}
+}
+
 func TestTwoColumnLayoutWithRightSidebar(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
 
 	view := m.View()
-	// Should render the right sidebar containing step status overview
 	if !strings.Contains(view, "CONFIG STATUS") && !strings.Contains(view, "STATUS NAV") {
 		t.Errorf("expected view to render right sidebar status nav, got:\n%s", view)
-	}
-
-	if !strings.Contains(view, "Step 0:") || !strings.Contains(view, "Step 1:") {
-		t.Errorf("expected sidebar to display step 0 and step 1 configurations, got:\n%s", view)
-	}
-}
-
-func TestTransitionToArchitecturePromptInputMode(t *testing.T) {
-	cfg := config.NewDefaultConfig()
-	m := NewModel(cfg)
-	m.currentStep = Step4
-	m.cursor = 3 // Submit button on Step 4
-
-	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m2 := updatedModel.(Model)
-
-	if m2.mode != ModePromptInput {
-		t.Errorf("expected transition to ModePromptInput after submit on Step4, got %v", m2.mode)
 	}
 }

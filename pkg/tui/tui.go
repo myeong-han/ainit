@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/myeong-han/ainit/pkg/command"
 	"github.com/myeong-han/ainit/pkg/config"
 	"github.com/myeong-han/ainit/pkg/generator"
 	"github.com/myeong-han/ainit/pkg/provider"
@@ -51,6 +52,7 @@ const (
 
 type Model struct {
 	cfg         *config.Config
+	cmdEngine   *command.CommandEngine
 	currentStep Step
 	cursor      int
 	mode        Mode
@@ -139,18 +141,19 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Enter your plain text architecture requirements here...\ne.g. 'Build a React frontend with Go microservices using Kafka event broker and Postgres DB'"
+	ta.Placeholder = "Type architecture prompt or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)...\ne.g. '/set-confs --provider openai --arch msa' or enter plain text requirements"
 	ta.SetWidth(50)
 	ta.SetHeight(8)
 
 	return Model{
 		cfg:         cfg,
+		cmdEngine:   command.NewCommandEngine(cfg),
 		currentStep: Step0,
 		cursor:      0,
 		mode:        ModeWizard,
 		inputs:      []textinput.Model{ti},
 		promptInput: ta,
-		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate | 'Enter/Space' to cycle options",
+		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate | Slash Commands: /set-confs, /gen-docs, /gen-codes",
 	}
 }
 
@@ -181,13 +184,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
-			case "ctrl+c", "q":
+			case "ctrl+c":
 				m.quitting = true
 				return m, tea.Quit
 			case "esc":
 				m.mode = ModeWizard
 				m.statusMsg = "Returned to Wizard settings"
 				return m, nil
+			case "enter":
+				val := m.promptInput.Value()
+				if command.IsSlashCommand(val) {
+					res, err := m.cmdEngine.Execute(val)
+					if err != nil {
+						m.statusMsg = fmt.Sprintf("❌ Slash Command Error: %v", err)
+					} else {
+						m.statusMsg = res.Message
+						if res.Action == command.ActionGenDocs || res.Action == command.ActionGenCodes {
+							m.mode = ModeDone
+							m.genResult = res.Message
+						}
+					}
+					m.promptInput.Reset()
+					return m, nil
+				}
 			case "ctrl+s", "ctrl+d":
 				m.mode = ModeGenerating
 				promptText := m.promptInput.Value()
@@ -255,7 +274,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentStep == Step4 && m.cursor == 3 {
 				m.mode = ModePromptInput
 				m.promptInput.Focus()
-				m.statusMsg = "Type your architecture requirements in plain text. Press 'Ctrl+S' or 'Ctrl+D' when finished."
+				m.statusMsg = "Type plain text requirements or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)"
 				return m, textarea.Blink
 			}
 			m.toggleCurrentField()
@@ -435,7 +454,7 @@ func (m *Model) toggleCurrentField() {
 		case 3:
 			m.mode = ModePromptInput
 			m.promptInput.Focus()
-			m.statusMsg = "Type your architecture requirements in plain text. Press 'Ctrl+S' or 'Ctrl+D' when finished."
+			m.statusMsg = "Type plain text requirements or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)"
 		}
 	}
 }
@@ -447,11 +466,9 @@ func (m Model) View() string {
 
 	var sb strings.Builder
 
-	// Header Title
 	sb.WriteString(titleStyle.Render("⚡ Agentic-Init (ainit) Harness TUI Engineering Tool"))
 	sb.WriteString("\n\n")
 
-	// Step Tabs Header
 	var tabs []string
 	steps := []Step{Step0, Step1, Step2, Step3, Step4}
 	for _, s := range steps {
@@ -464,7 +481,6 @@ func (m Model) View() string {
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, tabs...))
 	sb.WriteString("\n\n")
 
-	// 2-Column Split View (Left Column + Right Sidebar Nav)
 	leftColumnView := m.renderLeftColumn()
 	rightSidebarView := m.renderRightSidebarNav()
 
@@ -472,7 +488,6 @@ func (m Model) View() string {
 	sb.WriteString(splitView)
 	sb.WriteString("\n\n")
 
-	// Footer Status Bar
 	sb.WriteString(statusStyle.Render(" Status: "))
 	sb.WriteString(m.statusMsg)
 	sb.WriteString("\n")
@@ -483,10 +498,12 @@ func (m Model) View() string {
 func (m Model) renderLeftColumn() string {
 	if m.mode == ModePromptInput {
 		var sb strings.Builder
-		sb.WriteString(headerStyle.Render("📝 Plain Text Architecture Input"))
+		sb.WriteString(headerStyle.Render("📝 Input Architecture or Slash Command"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.promptInput.View())
 		sb.WriteString("\n\n")
+		sb.WriteString(hintStyle.Render("[Slash Commands: /set-confs, /gen-docs, /gen-codes, /help]"))
+		sb.WriteString("\n")
 		sb.WriteString(hintStyle.Render("[Press Ctrl+S or Ctrl+D to Submit & Generate]"))
 		return sb.String()
 	}
@@ -507,28 +524,23 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(sidebarHeaderStyle.Render("📊 CONFIG STATUS NAV"))
 	sb.WriteString("\n\n")
 
-	// Step 0 Status
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 0: AI Licensing") + "\n")
 	sb.WriteString(fmt.Sprintf("• Prov: %s\n", truncateStr(m.cfg.Step0.ProviderID, 18)))
 	sb.WriteString(fmt.Sprintf("• Model: %s\n", truncateStr(m.cfg.Step0.PrimaryModel, 17)))
 	sb.WriteString(fmt.Sprintf("• Auth: [%s]\n\n", m.cfg.Step0.LicensingMode))
 
-	// Step 1 Status
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 1: Arch Spec") + "\n")
 	sb.WriteString(fmt.Sprintf("• Style: %s (%s)\n", m.cfg.Step1.ArchitectureStyle, m.cfg.Step1.RepoStructure))
 	sb.WriteString(fmt.Sprintf("• Diag: Seq(%v) GitOps(%v)\n\n", m.cfg.Step1.GenerateSequence, m.cfg.Step1.GenerateGitOps))
 
-	// Step 2 Status
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 2: MCP Connections") + "\n")
 	sb.WriteString(fmt.Sprintf("• Git: %s (READY)\n", m.cfg.Step2.GitProvider))
 	sb.WriteString(fmt.Sprintf("• K8s: %s | ArgoCD: ACTIVE\n\n", m.cfg.Step2.K8sTarget))
 
-	// Step 3 Status
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 3: Harness & TDD") + "\n")
 	sb.WriteString(fmt.Sprintf("• Commit: %s\n", m.cfg.Step3.CommitConvention))
 	sb.WriteString(fmt.Sprintf("• TDD: %v | Sandbox: %v\n\n", m.cfg.Step3.TDDMode, m.cfg.Step3.LocalSandboxTest))
 
-	// Step 4 Status
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 4: Release Pipeline") + "\n")
 	sb.WriteString(fmt.Sprintf("• SemVer: %s\n", m.cfg.Step4.VersioningStrategy))
 	sb.WriteString(fmt.Sprintf("• Sync: Notion/Slack (%v)\n", m.cfg.Step4.ReleaseNotesSync))
