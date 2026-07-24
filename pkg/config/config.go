@@ -5,56 +5,42 @@ import (
 	"strings"
 )
 
-// Step0Config defines AI Licensing and OpenCode-compatible Provider/Model setup
 type Step0Config struct {
-	LicensingMode    string // "subscription" (oauth), "apikey", "local"
-	ProviderID       string // "anthropic", "openai", "google", "deepseek", "openrouter", "ollama"
-	PrimaryModel     string // e.g. "claude-3-5-sonnet-20241022"
-	FallbackProvider string // e.g. "openai"
-	FallbackModel    string // e.g. "gpt-4o-mini"
-	APIKey           string
-	BaseURL          string // e.g. "http://localhost:11434"
+	LicensingMode string // "subscription" | "apikey" | "local"
+	PrimaryModel  string // "claude-3-5-sonnet", "gpt-4o", etc.
+	FallbackModel string // "gpt-4o-mini", "claude-3-5-haiku", etc.
+	ProviderID    string // "anthropic", "openai", "gemini", "deepseek", "openrouter", "ollama"
 }
 
-// Step1Config defines Architecture & Specification setup
 type Step1Config struct {
-	ProjectName       string // e.g., "my-awesome-msa"
-	ArchitectureStyle string // "msa", "monolith", "eda"
-	RepoStructure     string // "monorepo", "multirepo"
+	ProjectName       string // Defaults to "unknown"
+	ArchitectureStyle string // "msa" | "monolith" | "eda"
+	RepoStructure     string // "monorepo" | "multirepo"
 	GenerateSequence  bool
-	GenerateTraffic   bool
 	GenerateGitOps    bool
-	GenerateERD       bool
 }
 
-// Step2Config defines MCP Integrations setup
 type Step2Config struct {
-	GitProvider     string   // "github", "bitbucket"
-	K8sTarget       string   // "local", "remote", "none"
-	CICDTools       []string // "jenkins", "argocd", "harbor"
-	DocTools        []string // "notion", "confluence"
-	MessengerAlerts []string // "slack", "discord"
+	GitProvider string // "github" | "bitbucket"
+	K8sTarget   string // "local" | "remote" | "none"
+	CICDTools   []string
+	DocTools    []string
 }
 
-// Step3Config defines Git Init & Harness Coding setup
 type Step3Config struct {
-	CommitConvention string // "conventional", "gitmoji", "issue-prefix", "custom"
-	IssueKeyFormat   string // e.g., "PROJ-\\d+"
-	PRTemplateStyle  string // "standard", "minimal", "jira"
-	AutoPRLabeling   bool
+	CommitConvention string // "conventional" | "gitmoji" | "issue-prefix" | "custom"
+	PRTemplateStyle  string // "standard" | "minimal" | "jira"
 	TDDMode          bool
 	LocalSandboxTest bool
 }
 
-// Step4Config defines Release & Operations setup
 type Step4Config struct {
-	VersioningStrategy string // "semver"
 	AutoChangelog      bool
 	ReleaseNotesSync   bool
 	DeployAlert        bool
+	VersioningStrategy string // "semver" | "calver"
 }
 
-// Config is the root configuration holding all 5-step parameters
 type Config struct {
 	Step0 Step0Config
 	Step1 Step1Config
@@ -63,57 +49,53 @@ type Config struct {
 	Step4 Step4Config
 }
 
-// NewDefaultConfig returns a Config initialized with sensible defaults
 func NewDefaultConfig() *Config {
 	return &Config{
 		Step0: Step0Config{
-			LicensingMode:    "subscription",
-			ProviderID:       "anthropic",
-			PrimaryModel:     "claude-3-5-sonnet-20241022",
-			FallbackProvider: "openai",
-			FallbackModel:    "gpt-4o-mini",
-			BaseURL:          "http://localhost:11434",
+			LicensingMode: "subscription",
+			PrimaryModel:  "claude-3-5-sonnet",
+			FallbackModel: "gpt-4o-mini",
+			ProviderID:    "anthropic",
 		},
 		Step1: Step1Config{
-			ProjectName:       "ainit-project",
+			ProjectName:       "unknown", // Initial loading default is "unknown"
 			ArchitectureStyle: "msa",
 			RepoStructure:     "monorepo",
 			GenerateSequence:  true,
-			GenerateTraffic:   true,
 			GenerateGitOps:    true,
-			GenerateERD:       true,
 		},
 		Step2: Step2Config{
-			GitProvider:     "github",
-			K8sTarget:       "local",
-			CICDTools:       []string{"argocd"},
-			DocTools:        []string{"notion"},
-			MessengerAlerts: []string{"slack"},
+			GitProvider: "github",
+			K8sTarget:   "local",
+			CICDTools:   []string{"argo-cd", "jenkins"},
+			DocTools:    []string{"notion", "confluence"},
 		},
 		Step3: Step3Config{
 			CommitConvention: "conventional",
-			IssueKeyFormat:   `[A-Z]+-\d+`,
 			PRTemplateStyle:  "standard",
-			AutoPRLabeling:   true,
 			TDDMode:          true,
 			LocalSandboxTest: true,
 		},
 		Step4: Step4Config{
-			VersioningStrategy: "semver",
 			AutoChangelog:      true,
 			ReleaseNotesSync:   true,
 			DeployAlert:        true,
+			VersioningStrategy: "semver",
 		},
 	}
 }
 
-// Validate checks if the required fields in Config are properly populated
 func (c *Config) Validate() error {
-	if strings.TrimSpace(c.Step1.ProjectName) == "" {
-		return errors.New("project name cannot be empty")
+	if c.Step0.ProviderID == "" {
+		return errors.New("Step 0: ProviderID cannot be empty")
 	}
-	if strings.TrimSpace(c.Step2.GitProvider) == "" {
-		return errors.New("git provider is required")
+	if c.Step1.ProjectName == "" {
+		c.Step1.ProjectName = "unknown"
+	}
+	if !strings.EqualFold(c.Step1.ArchitectureStyle, "msa") &&
+		!strings.EqualFold(c.Step1.ArchitectureStyle, "monolith") &&
+		!strings.EqualFold(c.Step1.ArchitectureStyle, "eda") {
+		return errors.New("Step 1: Invalid architecture style")
 	}
 	return nil
 }

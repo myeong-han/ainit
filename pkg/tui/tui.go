@@ -173,12 +173,12 @@ var (
 
 func NewModel(cfg *config.Config) Model {
 	ti := textinput.New()
-	ti.Placeholder = "my-awesome-project"
+	ti.Placeholder = "unknown"
 	ti.SetValue(cfg.Step1.ProjectName)
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Type '/' for Slash Commands (/gen-all, /gen-docs, /gen-codes, /gen-gitops, /set-name)..."
+	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /gen-all, /gen-docs, /gen-codes)..."
 	ta.SetWidth(60)
 	ta.SetHeight(4)
 	ta.Focus()
@@ -186,7 +186,7 @@ func NewModel(cfg *config.Config) Model {
 	initialHistory := []ChatMessage{
 		{
 			Sender:  "Agent",
-			Content: "Welcome to Agentic-Init (ainit)! Type '/' for Slash Commands (/gen-all, /set-name) or enter plain text requirements.",
+			Content: "Welcome to Agentic-Init (ainit)! Type '/git-init <name>' to initialize your project or '/' for commands.",
 		},
 	}
 
@@ -204,7 +204,7 @@ func NewModel(cfg *config.Config) Model {
 		slashOptions:      command.GetAvailableSlashCommands(),
 		width:             100,
 		height:            28,
-		statusMsg:         "Main Chatting View | Type '/' for Slash Commands Dropdown | Press Ctrl+S to submit",
+		statusMsg:         "Main Chatting View | Type '/git-init <name>' to set project name | Press Ctrl+S to submit",
 	}
 }
 
@@ -266,7 +266,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
-			// If slash command dropdown is open, handle navigation & autocomplete selection
 			if m.slashDropdownOpen {
 				switch msg.String() {
 				case "up", "k":
@@ -280,7 +279,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				case "tab", "enter", "right":
-					// Selecting a dropdown item autocompletes into chat input WITHOUT instant execution!
 					selectedCmd := m.slashOptions[m.slashCursor].Name
 					m.promptInput.SetValue(selectedCmd + " ")
 					m.slashDropdownOpen = false
@@ -679,7 +677,7 @@ func (m Model) renderLeftColumn(width int) string {
 	if m.mode == ModeConfirm {
 		projName := m.cfg.Step1.ProjectName
 		if projName == "" {
-			projName = "ainit-app"
+			projName = "unknown"
 		}
 
 		var sb strings.Builder
@@ -758,7 +756,7 @@ func (m Model) renderRightSidebarNav() string {
 
 	projName := m.cfg.Step1.ProjectName
 	if projName == "" {
-		projName = "ainit-app"
+		projName = "unknown"
 	}
 	sb.WriteString(sidebarKeyStyle.Render("App Name: ") + sidebarValStyle.Render(truncateStr(projName, 14)) + "\n")
 	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")

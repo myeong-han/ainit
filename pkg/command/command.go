@@ -15,7 +15,6 @@ type ActionType int
 
 const (
 	ActionNone ActionType = iota
-	ActionSetName
 	ActionSetConfs
 	ActionGenDocs
 	ActionGenCodes
@@ -47,8 +46,7 @@ func NewCommandEngine(cfg *config.Config) *CommandEngine {
 // GetAvailableSlashCommands returns the list of supported slash commands for UI autocomplete dropdown
 func GetAvailableSlashCommands() []SlashOption {
 	return []SlashOption{
-		{Name: "/set-name", Description: "Set project name for architecture, repo and /git-init", Example: "/set-name my-cool-app"},
-		{Name: "/git-init", Description: "Clone existing repo or initialize new git repo using project name", Example: "/git-init myeong-han/my-cool-app"},
+		{Name: "/git-init", Description: "Set project name, clone/init remote repo & update work-dir", Example: "/git-init my-cool-app"},
 		{Name: "/set-confs", Description: "Configure Name, AI Provider, Arch, Git & Conventions", Example: "/set-confs --name my-app --provider openai"},
 		{Name: "/gen-docs", Description: "Generate Architecture Spec & Mermaid Diagrams", Example: "/gen-docs"},
 		{Name: "/gen-codes", Description: "Generate Agent Context Rules & Scaffolding", Example: "/gen-codes"},
@@ -74,8 +72,6 @@ func (e *CommandEngine) Execute(input string) (*Result, error) {
 	cmdName := strings.ToLower(parts[0])
 
 	switch cmdName {
-	case "/set-name":
-		return e.handleSetName(parts[1:])
 	case "/git-init":
 		return e.handleGitInit(parts[1:])
 	case "/set-confs":
@@ -95,30 +91,27 @@ func (e *CommandEngine) Execute(input string) (*Result, error) {
 	}
 }
 
-func (e *CommandEngine) handleSetName(args []string) (*Result, error) {
-	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		return nil, errors.New("usage: /set-name <project-name>")
-	}
-
-	projName := strings.TrimSpace(args[0])
-	e.cfg.Step1.ProjectName = projName
-
-	return &Result{
-		Action:  ActionSetName,
-		Message: fmt.Sprintf("✏️ Project name updated to '%s'! (Will be used for /git-init & generation)", projName),
-	}, nil
-}
-
 func (e *CommandEngine) handleGitInit(args []string) (*Result, error) {
-	repoPath := ""
-	if len(args) > 0 {
-		repoPath = args[0]
-	} else {
-		// Use /set-name project name if available
-		projName := e.cfg.Step1.ProjectName
-		if projName == "" {
-			projName = "ainit-app"
+	var repoPath string
+	var projName string
+
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		input := strings.TrimSpace(args[0])
+		if strings.Contains(input, "/") {
+			parts := strings.Split(input, "/")
+			repoPath = input
+			projName = parts[1]
+		} else {
+			projName = input
+			repoPath = fmt.Sprintf("myeong-han/%s", projName)
 		}
+		// Update ProjectName in Config
+		e.cfg.Step1.ProjectName = projName
+	} else {
+		if e.cfg.Step1.ProjectName == "" || e.cfg.Step1.ProjectName == "unknown" {
+			return nil, errors.New("usage: /git-init <project-name> or /git-init <owner/repository>")
+		}
+		projName = e.cfg.Step1.ProjectName
 		repoPath = fmt.Sprintf("myeong-han/%s", projName)
 	}
 
@@ -127,18 +120,14 @@ func (e *CommandEngine) handleGitInit(args []string) (*Result, error) {
 		provider = "github"
 	}
 
-	repoName := repoPath
-	if parts := strings.Split(repoPath, "/"); len(parts) == 2 {
-		repoName = parts[1]
-	}
-	targetDir := filepath.Join(".", repoName)
+	targetDir := filepath.Join(".", projName)
 
 	res, err := git.InitOrCloneRepository(provider, repoPath, targetDir)
 	if err != nil {
 		return nil, fmt.Errorf("git-init failed: %v", err)
 	}
 
-	msg := fmt.Sprintf("🐙 [%s] %s\nUpdated Working Directory: %s", strings.ToUpper(res.Action), res.Message, res.WorkDir)
+	msg := fmt.Sprintf("🐙 [%s] Project Name set to '%s'!\nRepo: %s\nUpdated Working Directory: %s", strings.ToUpper(res.Action), projName, repoPath, res.WorkDir)
 
 	return &Result{
 		Action:  ActionGitInit,
@@ -246,8 +235,7 @@ func (e *CommandEngine) handleGenAll() (*Result, error) {
 
 func (e *CommandEngine) handleHelp() (*Result, error) {
 	helpMsg := `Available Slash Commands:
-• /set-name <name>       : Set project name for architecture, repo and /git-init
-• /git-init [owner/repo] : Clone existing repo or initialize new git repo using project name
+• /git-init <name>       : Set project name, clone/init remote repo & update work-dir
 • /set-confs --name <app> --provider <id> --arch <msa|monolith> --git <github|bitbucket>
 • /gen-docs   : Generate docs/ARCHITECTURE_SPEC.md & 4 Mermaid diagrams
 • /gen-codes  : Generate AGENTS.md, CLAUDE.md & cross-agent context rules
