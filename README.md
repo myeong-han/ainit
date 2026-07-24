@@ -32,10 +32,13 @@ TUI 대화창/프롬프트 모드에서 `/`를 입력하면 드롭다운 오토�
 
 | Slash Command | Usage / Description | Example |
 | :--- | :--- | :--- |
-| **`/git-init`** | 원격 레포 존재 시 `git clone` 후 `work-dir` 업데이트, 없으면 신규 레포 초기화 | `/git-init myeong-han/ainit` |
-| **`/set-confs`** | TUI 설정을 CLI 인자 형태로 즉시 업데이트 | `/set-confs --provider openai --arch monolith --git github` |
+| **`/set-name`** | 생성할 프로젝트명 설정 (`/git-init` 및 아키텍처 명세서 기본 이름으로 활용) | `/set-name my-cool-app` |
+| **`/git-init`** | 프로젝트명을 사용해 원격 레포 존재 시 `git clone` 후 `work-dir` 업데이트, 없으면 신규 레포 초기화 | `/git-init` 또는 `/git-init myeong-han/my-app` |
+| **`/set-confs`** | TUI 설정을 CLI 인자 형태로 즉시 업데이트 | `/set-confs --name my-app --provider openai --arch msa` |
 | **`/gen-docs`** | `docs/ARCHITECTURE_SPEC.md` 아키텍처 설계서 및 4종 Mermaid 차트 즉시 생성 | `/gen-docs` |
 | **`/gen-codes`** | `AGENTS.md`, `CLAUDE.md`, `.cursorrules` 등 이종 에이전트 룰 파일 생성 | `/gen-codes` |
+| **`/gen-gitops`** | Helm Charts (`Chart.yaml`, `values.yaml`) 및 ArgoCD Application manifest 생성 | `/gen-gitops` |
+| **`/gen-all`** | **`/gen-docs` $\rightarrow$ `/gen-codes` $\rightarrow$ `/gen-gitops`**를 순차적 일괄 실행 | `/gen-all` |
 | **`/help`** | 이용 가능한 슬래시 커맨드 도움말 출력 | `/help` |
 
 ---
