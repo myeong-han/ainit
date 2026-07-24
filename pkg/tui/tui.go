@@ -44,11 +44,16 @@ func (s Step) String() string {
 type Mode int
 
 const (
-	ModeWizard Mode = iota
-	ModePromptInput
+	ModePromptInput Mode = iota // Default Main Chatting Mode
+	ModeWizard                  // Step Config Form Mode (via /set-confs)
 	ModeGenerating
 	ModeDone
 )
+
+type ChatMessage struct {
+	Sender  string // "User" or "Agent"
+	Content string
+}
 
 type Model struct {
 	cfg         *config.Config
@@ -58,6 +63,7 @@ type Model struct {
 	mode        Mode
 	inputs      []textinput.Model
 	promptInput textarea.Model
+	chatHistory []ChatMessage
 	width       int
 	height      int
 	statusMsg   string
@@ -81,20 +87,6 @@ var (
 	inactiveTabStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#8A8A8A")).
 				Padding(0, 1)
-
-	leftBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")).
-			Padding(1, 2).
-			Width(56).
-			Height(18)
-
-	sidebarBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#00FFD1")).
-			Padding(1, 1).
-			Width(34).
-			Height(18)
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -121,9 +113,12 @@ var (
 	unfocusedValueStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#BBBBBB"))
 
-	badgeStyle = lipgloss.NewStyle().
+	userChatStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#00FFD1")).
-			Italic(true)
+			Bold(true)
+
+	agentChatStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FAFAFA"))
 
 	hintStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262")).
@@ -141,24 +136,35 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Type architecture prompt or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)...\ne.g. '/set-confs --provider openai --arch msa' or enter plain text requirements"
-	ta.SetWidth(50)
-	ta.SetHeight(8)
+	ta.Placeholder = "Type architecture requirements or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)..."
+	ta.SetWidth(60)
+	ta.SetHeight(4)
+	ta.Focus()
+
+	initialHistory := []ChatMessage{
+		{
+			Sender:  "Agent",
+			Content: "Welcome to Agentic-Init (ainit)! Type your architecture requirements in plain text or use /set-confs to modify settings.",
+		},
+	}
 
 	return Model{
 		cfg:         cfg,
 		cmdEngine:   command.NewCommandEngine(cfg),
 		currentStep: Step0,
 		cursor:      0,
-		mode:        ModeWizard,
+		mode:        ModePromptInput, // Default Main View is Chat
 		inputs:      []textinput.Model{ti},
 		promptInput: ta,
-		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate | Slash Commands: /set-confs, /gen-docs, /gen-codes",
+		chatHistory: initialHistory,
+		width:       100, // Default width fallback
+		height:      28,  // Default height fallback
+		statusMsg:   "Main Chatting View | Type /set-confs to open config form | Press Ctrl+S to submit",
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return textinput.Blink
+	return textarea.Blink
 }
 
 func (m Model) getMaxCursorForStep() int {
@@ -179,6 +185,12 @@ func (m Model) getMaxCursorForStep() int {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(tea.Msg).(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+	}
+
 	if m.mode == ModePromptInput {
 		var cmd tea.Cmd
 		switch msg := msg.(tea.Msg).(type) {
@@ -187,17 +199,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				m.quitting = true
 				return m, tea.Quit
-			case "esc":
-				m.mode = ModeWizard
-				m.statusMsg = "Returned to Wizard settings"
-				return m, nil
 			case "enter":
-				val := m.promptInput.Value()
+				val := strings.TrimSpace(m.promptInput.Value())
+				if val == "" {
+					return m, nil
+				}
+
+				m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "User", Content: val})
+
+				if val == "/set-confs" {
+					m.mode = ModeWizard
+					m.statusMsg = "Switched to Config Wizard Form. Press 'Tab' to navigate steps or 'Esc' to return to Chat."
+					m.promptInput.Reset()
+					return m, nil
+				}
+
 				if command.IsSlashCommand(val) {
 					res, err := m.cmdEngine.Execute(val)
 					if err != nil {
-						m.statusMsg = fmt.Sprintf("❌ Slash Command Error: %v", err)
+						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: fmt.Sprintf("❌ Error: %v", err)})
+						m.statusMsg = fmt.Sprintf("Slash Command Error: %v", err)
 					} else {
+						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: res.Message})
 						m.statusMsg = res.Message
 						if res.Action == command.ActionGenDocs || res.Action == command.ActionGenCodes {
 							m.mode = ModeDone
@@ -207,9 +230,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.promptInput.Reset()
 					return m, nil
 				}
+
+				// Plain text message
+				m.chatHistory = append(m.chatHistory, ChatMessage{
+					Sender:  "Agent",
+					Content: fmt.Sprintf("Received architecture prompt: '%s'. Press 'Ctrl+S' to generate docs & code.", val),
+				})
+				m.promptInput.Reset()
+				return m, nil
+
 			case "ctrl+s", "ctrl+d":
 				m.mode = ModeGenerating
 				promptText := m.promptInput.Value()
+				if strings.TrimSpace(promptText) == "" && len(m.chatHistory) > 0 {
+					promptText = m.chatHistory[len(m.chatHistory)-1].Content
+				}
 				if strings.TrimSpace(promptText) == "" {
 					promptText = "Default MSA architecture with Go backend & React frontend"
 				}
@@ -228,6 +263,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if m.mode == ModeWizard {
+		switch msg := msg.(tea.Msg).(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "ctrl+c", "q":
+				m.quitting = true
+				return m, tea.Quit
+
+			case "esc":
+				m.mode = ModePromptInput
+				m.statusMsg = "Returned to Main Chatting View"
+				return m, textarea.Blink
+
+			case "right", "tab":
+				if m.currentStep < Step4 {
+					m.currentStep++
+					m.cursor = 0
+				}
+
+			case "left", "shift+tab":
+				if m.currentStep > Step0 {
+					m.currentStep--
+					m.cursor = 0
+				}
+
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+
+			case "down", "j":
+				maxCursor := m.getMaxCursorForStep()
+				if m.cursor < maxCursor {
+					m.cursor++
+				}
+
+			case "enter", " ":
+				if m.currentStep == Step4 && m.cursor == 3 {
+					m.mode = ModePromptInput
+					m.promptInput.Focus()
+					m.statusMsg = "Returned to Main Chatting View"
+					return m, textarea.Blink
+				}
+				m.toggleCurrentField()
+			}
+		}
+		return m, nil
+	}
+
 	if m.mode == ModeDone {
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
@@ -238,51 +322,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	}
-
-	switch msg := msg.(tea.Msg).(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			m.quitting = true
-			return m, tea.Quit
-
-		case "right", "tab":
-			if m.currentStep < Step4 {
-				m.currentStep++
-				m.cursor = 0
-			}
-
-		case "left", "shift+tab":
-			if m.currentStep > Step0 {
-				m.currentStep--
-				m.cursor = 0
-			}
-
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-
-		case "down", "j":
-			maxCursor := m.getMaxCursorForStep()
-			if m.cursor < maxCursor {
-				m.cursor++
-			}
-
-		case "enter", " ":
-			if m.currentStep == Step4 && m.cursor == 3 {
-				m.mode = ModePromptInput
-				m.promptInput.Focus()
-				m.statusMsg = "Type plain text requirements or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)"
-				return m, textarea.Blink
-			}
-			m.toggleCurrentField()
-		}
-
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
 	}
 
 	return m, nil
@@ -454,7 +493,7 @@ func (m *Model) toggleCurrentField() {
 		case 3:
 			m.mode = ModePromptInput
 			m.promptInput.Focus()
-			m.statusMsg = "Type plain text requirements or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)"
+			m.statusMsg = "Returned to Main Chatting View"
 		}
 	}
 }
@@ -466,28 +505,59 @@ func (m Model) View() string {
 
 	var sb strings.Builder
 
+	// Title
 	sb.WriteString(titleStyle.Render("⚡ Agentic-Init (ainit) Harness TUI Engineering Tool"))
 	sb.WriteString("\n\n")
 
-	var tabs []string
-	steps := []Step{Step0, Step1, Step2, Step3, Step4}
-	for _, s := range steps {
-		if s == m.currentStep {
-			tabs = append(tabs, activeTabStyle.Render(" ▶ "+s.String()+" "))
-		} else {
-			tabs = append(tabs, inactiveTabStyle.Render("   "+s.String()+" "))
-		}
+	// Dynamic Layout Width & Height Calculation
+	sidebarWidth := 30
+	mainWidth := m.width - sidebarWidth - 6
+	if mainWidth < 40 {
+		mainWidth = 40
 	}
-	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, tabs...))
-	sb.WriteString("\n\n")
+	boxHeight := m.height - 8
+	if boxHeight < 14 {
+		boxHeight = 14
+	}
 
-	leftColumnView := m.renderLeftColumn()
+	leftBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7D56F4")).
+		Padding(1, 2).
+		Width(mainWidth).
+		Height(boxHeight)
+
+	rightSidebarBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#00FFD1")).
+		Padding(1, 1).
+		Width(sidebarWidth).
+		Height(boxHeight)
+
+	// Step Tabs Header (Only shown when in Wizard Mode)
+	if m.mode == ModeWizard {
+		var tabs []string
+		steps := []Step{Step0, Step1, Step2, Step3, Step4}
+		for _, s := range steps {
+			if s == m.currentStep {
+				tabs = append(tabs, activeTabStyle.Render(" ▶ "+s.String()+" "))
+			} else {
+				tabs = append(tabs, inactiveTabStyle.Render("   "+s.String()+" "))
+			}
+		}
+		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, tabs...))
+		sb.WriteString("\n\n")
+	}
+
+	// 2-Column Responsive Layout: Left Main Flex View + Right Fixed Sidebar Nav
+	leftColumnView := m.renderLeftColumn(mainWidth - 4)
 	rightSidebarView := m.renderRightSidebarNav()
 
-	splitView := lipgloss.JoinHorizontal(lipgloss.Top, leftBoxStyle.Render(leftColumnView), sidebarBoxStyle.Render(rightSidebarView))
+	splitView := lipgloss.JoinHorizontal(lipgloss.Top, leftBox.Render(leftColumnView), rightSidebarBox.Render(rightSidebarView))
 	sb.WriteString(splitView)
 	sb.WriteString("\n\n")
 
+	// Footer Status Bar
 	sb.WriteString(statusStyle.Render(" Status: "))
 	sb.WriteString(m.statusMsg)
 	sb.WriteString("\n")
@@ -495,16 +565,26 @@ func (m Model) View() string {
 	return sb.String()
 }
 
-func (m Model) renderLeftColumn() string {
+func (m Model) renderLeftColumn(width int) string {
 	if m.mode == ModePromptInput {
 		var sb strings.Builder
-		sb.WriteString(headerStyle.Render("📝 Input Architecture or Slash Command"))
+		sb.WriteString(headerStyle.Render("💬 Main Architecture Chatting Session"))
 		sb.WriteString("\n\n")
+
+		// Render Chat History
+		for _, msg := range m.chatHistory {
+			if msg.Sender == "User" {
+				sb.WriteString(userChatStyle.Render("👤 User: ") + msg.Content + "\n")
+			} else {
+				sb.WriteString(agentChatStyle.Render("🤖 Agent: ") + msg.Content + "\n")
+			}
+		}
+
+		sb.WriteString("\n")
+		m.promptInput.SetWidth(width - 2)
 		sb.WriteString(m.promptInput.View())
 		sb.WriteString("\n\n")
-		sb.WriteString(hintStyle.Render("[Slash Commands: /set-confs, /gen-docs, /gen-codes, /help]"))
-		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Press Ctrl+S or Ctrl+D to Submit & Generate]"))
+		sb.WriteString(hintStyle.Render("[Type /set-confs for config form | Type /help for commands | Press Ctrl+S to Submit]"))
 		return sb.String()
 	}
 
@@ -525,8 +605,8 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString("\n\n")
 
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 0: AI Licensing") + "\n")
-	sb.WriteString(fmt.Sprintf("• Prov: %s\n", truncateStr(m.cfg.Step0.ProviderID, 18)))
-	sb.WriteString(fmt.Sprintf("• Model: %s\n", truncateStr(m.cfg.Step0.PrimaryModel, 17)))
+	sb.WriteString(fmt.Sprintf("• Prov: %s\n", truncateStr(m.cfg.Step0.ProviderID, 14)))
+	sb.WriteString(fmt.Sprintf("• Model: %s\n", truncateStr(m.cfg.Step0.PrimaryModel, 13)))
 	sb.WriteString(fmt.Sprintf("• Auth: [%s]\n\n", m.cfg.Step0.LicensingMode))
 
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 1: Arch Spec") + "\n")
@@ -535,7 +615,7 @@ func (m Model) renderRightSidebarNav() string {
 
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 2: MCP Connections") + "\n")
 	sb.WriteString(fmt.Sprintf("• Git: %s (READY)\n", m.cfg.Step2.GitProvider))
-	sb.WriteString(fmt.Sprintf("• K8s: %s | ArgoCD: ACTIVE\n\n", m.cfg.Step2.K8sTarget))
+	sb.WriteString(fmt.Sprintf("• K8s: %s | ArgoCD: ON\n\n", m.cfg.Step2.K8sTarget))
 
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 3: Harness & TDD") + "\n")
 	sb.WriteString(fmt.Sprintf("• Commit: %s\n", m.cfg.Step3.CommitConvention))
@@ -583,7 +663,7 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(headerStyle.Render("🤖 Step 0: OpenCode AI Provider Catalog"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "AI Provider:", "["+provName+"]"))
-		sb.WriteString(m.renderRow(1, "Primary Model:", "["+truncateStr(m.cfg.Step0.PrimaryModel, 18)+"]"))
+		sb.WriteString(m.renderRow(1, "Primary Model:", "["+truncateStr(m.cfg.Step0.PrimaryModel, 16)+"]"))
 		sb.WriteString(m.renderRow(2, "Auth Method:", "["+m.cfg.Step0.LicensingMode+"]"))
 		sb.WriteString(m.renderRow(3, "Fallback Model:", "["+m.cfg.Step0.FallbackModel+"]"))
 		sb.WriteString("\n")
@@ -626,9 +706,9 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(m.renderRow(1, "Release Sync:", fmt.Sprintf("[%v]", m.cfg.Step4.ReleaseNotesSync)))
 		sb.WriteString(m.renderRow(2, "Deploy Alerts:", fmt.Sprintf("[%v]", m.cfg.Step4.DeployAlert)))
 		sb.WriteString("\n")
-		sb.WriteString(m.renderRow(3, "👉 PROCEED TO PLAIN TEXT INPUT 👈", ""))
+		sb.WriteString(m.renderRow(3, "👉 RETURN TO MAIN CHATTING 👈", ""))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Press Enter to input plain text prompt]"))
+		sb.WriteString(hintStyle.Render("[Press Enter to return to main chat]"))
 	}
 
 	return sb.String()
