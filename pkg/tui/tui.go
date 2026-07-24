@@ -10,7 +10,6 @@ import (
 	"github.com/myeong-han/ainit/pkg/config"
 )
 
-// Step represents the current active step in the TUI wizard
 type Step int
 
 const (
@@ -38,7 +37,6 @@ func (s Step) String() string {
 	}
 }
 
-// Model defines the Bubble Tea TUI application state
 type Model struct {
 	cfg         *config.Config
 	currentStep Step
@@ -50,7 +48,6 @@ type Model struct {
 	quitting    bool
 }
 
-// Lipgloss Style Definitions for Clean & Modern Aesthetic
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -78,12 +75,20 @@ var (
 			Bold(true).
 			Foreground(lipgloss.Color("#00FFD1"))
 
-	labelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#D1D1D1"))
+	focusedLabelStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#00FFD1"))
 
-	valueStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FF87D7"))
+	unfocusedLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#D1D1D1"))
+
+	focusedValueStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#FF87D7")).
+				Underline(true)
+
+	unfocusedValueStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#BBBBBB"))
 
 	hintStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262")).
@@ -94,7 +99,6 @@ var (
 			Bold(true)
 )
 
-// NewModel initializes the TUI model with the given configuration
 func NewModel(cfg *config.Config) Model {
 	ti := textinput.New()
 	ti.Placeholder = "my-awesome-project"
@@ -106,12 +110,29 @@ func NewModel(cfg *config.Config) Model {
 		currentStep: Step0,
 		cursor:      0,
 		inputs:      []textinput.Model{ti},
-		statusMsg:   "Press 'Tab' or '←/→' to navigate steps | 'Ctrl+C' or 'q' to quit",
+		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate fields | 'Enter/Space' to toggle",
 	}
 }
 
 func (m Model) Init() tea.Cmd {
 	return textinput.Blink
+}
+
+func (m Model) getMaxCursorForStep() int {
+	switch m.currentStep {
+	case Step0:
+		return 2 // LicensingMode, PrimaryModel, FallbackModel
+	case Step1:
+		return 3 // ArchStyle, RepoStructure, SequenceDiagram, GitOpsDiagram
+	case Step2:
+		return 1 // GitProvider, K8sTarget
+	case Step3:
+		return 3 // CommitConvention, PRTemplateStyle, TDDMode, LocalSandboxTest
+	case Step4:
+		return 2 // AutoChangelog, ReleaseNotesSync, DeployAlert
+	default:
+		return 0
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -140,10 +161,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "down", "j":
-			m.cursor++
+			maxCursor := m.getMaxCursorForStep()
+			if m.cursor < maxCursor {
+				m.cursor++
+			}
 
-		case "enter":
-			m.statusMsg = fmt.Sprintf("Confirmed settings for %s", m.currentStep.String())
+		case "enter", " ":
+			m.toggleCurrentField()
 		}
 
 	case tea.WindowSizeMsg:
@@ -152,6 +176,148 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) toggleCurrentField() {
+	switch m.currentStep {
+	case Step0:
+		switch m.cursor {
+		case 0: // LicensingMode
+			switch m.cfg.Step0.LicensingMode {
+			case "subscription":
+				m.cfg.Step0.LicensingMode = "apikey"
+			case "apikey":
+				m.cfg.Step0.LicensingMode = "local"
+			default:
+				m.cfg.Step0.LicensingMode = "subscription"
+			}
+			m.statusMsg = fmt.Sprintf("Changed Licensing Mode to [%s]", m.cfg.Step0.LicensingMode)
+
+		case 1: // PrimaryModel
+			switch m.cfg.Step0.PrimaryModel {
+			case "claude-3-5-sonnet":
+				m.cfg.Step0.PrimaryModel = "gpt-4o"
+			case "gpt-4o":
+				m.cfg.Step0.PrimaryModel = "gemini-1.5-pro"
+			default:
+				m.cfg.Step0.PrimaryModel = "claude-3-5-sonnet"
+			}
+			m.statusMsg = fmt.Sprintf("Selected Primary Model: [%s]", m.cfg.Step0.PrimaryModel)
+
+		case 2: // FallbackModel
+			switch m.cfg.Step0.FallbackModel {
+			case "gpt-4o-mini":
+				m.cfg.Step0.FallbackModel = "claude-3-5-haiku"
+			case "claude-3-5-haiku":
+				m.cfg.Step0.FallbackModel = "none"
+			default:
+				m.cfg.Step0.FallbackModel = "gpt-4o-mini"
+			}
+			m.statusMsg = fmt.Sprintf("Selected Fallback Model: [%s]", m.cfg.Step0.FallbackModel)
+		}
+
+	case Step1:
+		switch m.cursor {
+		case 0: // ArchStyle
+			switch m.cfg.Step1.ArchitectureStyle {
+			case "msa":
+				m.cfg.Step1.ArchitectureStyle = "monolith"
+			case "monolith":
+				m.cfg.Step1.ArchitectureStyle = "eda"
+			default:
+				m.cfg.Step1.ArchitectureStyle = "msa"
+			}
+			m.statusMsg = fmt.Sprintf("Changed Arch Style to [%s]", m.cfg.Step1.ArchitectureStyle)
+
+		case 1: // RepoStructure
+			if m.cfg.Step1.RepoStructure == "monorepo" {
+				m.cfg.Step1.RepoStructure = "multirepo"
+			} else {
+				m.cfg.Step1.RepoStructure = "monorepo"
+			}
+			m.statusMsg = fmt.Sprintf("Changed Repo Layout to [%s]", m.cfg.Step1.RepoStructure)
+
+		case 2: // Sequence Diagram Toggle
+			m.cfg.Step1.GenerateSequence = !m.cfg.Step1.GenerateSequence
+			m.statusMsg = fmt.Sprintf("Toggled Sequence Diagram Generation: [%v]", m.cfg.Step1.GenerateSequence)
+
+		case 3: // GitOps Diagram Toggle
+			m.cfg.Step1.GenerateGitOps = !m.cfg.Step1.GenerateGitOps
+			m.statusMsg = fmt.Sprintf("Toggled GitOps Diagram Generation: [%v]", m.cfg.Step1.GenerateGitOps)
+		}
+
+	case Step2:
+		switch m.cursor {
+		case 0: // GitProvider
+			if m.cfg.Step2.GitProvider == "github" {
+				m.cfg.Step2.GitProvider = "bitbucket"
+			} else {
+				m.cfg.Step2.GitProvider = "github"
+			}
+			m.statusMsg = fmt.Sprintf("Selected Git Provider: [%s]", m.cfg.Step2.GitProvider)
+
+		case 1: // K8sTarget
+			switch m.cfg.Step2.K8sTarget {
+			case "local":
+				m.cfg.Step2.K8sTarget = "remote"
+			case "remote":
+				m.cfg.Step2.K8sTarget = "none"
+			default:
+				m.cfg.Step2.K8sTarget = "local"
+			}
+			m.statusMsg = fmt.Sprintf("Selected K8s Target: [%s]", m.cfg.Step2.K8sTarget)
+		}
+
+	case Step3:
+		switch m.cursor {
+		case 0: // CommitConvention
+			switch m.cfg.Step3.CommitConvention {
+			case "conventional":
+				m.cfg.Step3.CommitConvention = "gitmoji"
+			case "gitmoji":
+				m.cfg.Step3.CommitConvention = "issue-prefix"
+			case "issue-prefix":
+				m.cfg.Step3.CommitConvention = "custom"
+			default:
+				m.cfg.Step3.CommitConvention = "conventional"
+			}
+			m.statusMsg = fmt.Sprintf("Changed Commit Convention to [%s]", m.cfg.Step3.CommitConvention)
+
+		case 1: // PRTemplateStyle
+			switch m.cfg.Step3.PRTemplateStyle {
+			case "standard":
+				m.cfg.Step3.PRTemplateStyle = "minimal"
+			case "minimal":
+				m.cfg.Step3.PRTemplateStyle = "jira"
+			default:
+				m.cfg.Step3.PRTemplateStyle = "standard"
+			}
+			m.statusMsg = fmt.Sprintf("Selected PR Template Style: [%s]", m.cfg.Step3.PRTemplateStyle)
+
+		case 2: // TDDMode
+			m.cfg.Step3.TDDMode = !m.cfg.Step3.TDDMode
+			m.statusMsg = fmt.Sprintf("Toggled TDD First Mode: [%v]", m.cfg.Step3.TDDMode)
+
+		case 3: // LocalSandboxTest
+			m.cfg.Step3.LocalSandboxTest = !m.cfg.Step3.LocalSandboxTest
+			m.statusMsg = fmt.Sprintf("Toggled Local Sandbox Build Check: [%v]", m.cfg.Step3.LocalSandboxTest)
+		}
+
+	case Step4:
+		switch m.cursor {
+		case 0: // AutoChangelog
+			m.cfg.Step4.AutoChangelog = !m.cfg.Step4.AutoChangelog
+			m.statusMsg = fmt.Sprintf("Toggled Auto Changelog: [%v]", m.cfg.Step4.AutoChangelog)
+
+		case 1: // ReleaseNotesSync
+			m.cfg.Step4.ReleaseNotesSync = !m.cfg.Step4.ReleaseNotesSync
+			m.statusMsg = fmt.Sprintf("Toggled Release Notes Sync: [%v]", m.cfg.Step4.ReleaseNotesSync)
+
+		case 2: // DeployAlert
+			m.cfg.Step4.DeployAlert = !m.cfg.Step4.DeployAlert
+			m.statusMsg = fmt.Sprintf("Toggled Deploy Webhook Alerts: [%v]", m.cfg.Step4.DeployAlert)
+		}
+	}
 }
 
 func (m Model) View() string {
@@ -191,6 +357,20 @@ func (m Model) View() string {
 	return sb.String()
 }
 
+func (m Model) renderRow(index int, label string, value string) string {
+	prefix := "  "
+	lblStyle := unfocusedLabelStyle
+	valStyle := unfocusedValueStyle
+
+	if index == m.cursor {
+		prefix = "▶ "
+		lblStyle = focusedLabelStyle
+		valStyle = focusedValueStyle
+	}
+
+	return fmt.Sprintf("%s%-20s %s\n", prefix, lblStyle.Render(label), valStyle.Render(value))
+}
+
 func (m Model) renderStepBody() string {
 	var sb strings.Builder
 
@@ -198,55 +378,51 @@ func (m Model) renderStepBody() string {
 	case Step0:
 		sb.WriteString(headerStyle.Render("🤖 Step 0: AI Licensing & Model Setup"))
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Licensing Mode:"), valueStyle.Render("["+m.cfg.Step0.LicensingMode+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Primary Model:"), valueStyle.Render("["+m.cfg.Step0.PrimaryModel+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Fallback Model:"), valueStyle.Render("["+m.cfg.Step0.FallbackModel+"]")))
+		sb.WriteString(m.renderRow(0, "Licensing Mode:", "["+m.cfg.Step0.LicensingMode+"]"))
+		sb.WriteString(m.renderRow(1, "Primary Model:", "["+m.cfg.Step0.PrimaryModel+"]"))
+		sb.WriteString(m.renderRow(2, "Fallback Model:", "["+m.cfg.Step0.FallbackModel+"]"))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Use Up/Down to navigate fields, Enter to toggle options]"))
+		sb.WriteString(hintStyle.Render("  [Use ↑/↓ to navigate fields | Press Enter/Space to cycle options]"))
 
 	case Step1:
 		sb.WriteString(headerStyle.Render("🏗️ Step 1: Architecture Spec & Mermaid Generation"))
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Project Name:"), valueStyle.Render(m.cfg.Step1.ProjectName)))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Arch Style:"), valueStyle.Render("["+m.cfg.Step1.ArchitectureStyle+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Repo Structure:"), valueStyle.Render("["+m.cfg.Step1.RepoStructure+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Mermaid Diagrams:"),
-			valueStyle.Render(fmt.Sprintf("Sequence(%v), Traffic(%v), GitOps(%v)",
-				m.cfg.Step1.GenerateSequence, m.cfg.Step1.GenerateTraffic, m.cfg.Step1.GenerateGitOps))))
+		sb.WriteString(m.renderRow(0, "Arch Style:", "["+m.cfg.Step1.ArchitectureStyle+"]"))
+		sb.WriteString(m.renderRow(1, "Repo Structure:", "["+m.cfg.Step1.RepoStructure+"]"))
+		sb.WriteString(m.renderRow(2, "Sequence Diagram:", fmt.Sprintf("[%v]", m.cfg.Step1.GenerateSequence)))
+		sb.WriteString(m.renderRow(3, "GitOps Diagram:", fmt.Sprintf("[%v]", m.cfg.Step1.GenerateGitOps)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Generates Sequence, Ingress Traffic, GitOps & ERD specs]"))
+		sb.WriteString(hintStyle.Render("  [Press Enter/Space to toggle MSA/Monolith or diagram specs]"))
 
 	case Step2:
 		sb.WriteString(headerStyle.Render("🔌 Step 2: MCP Tooling & Infrastructure Connections"))
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Git Provider:"), valueStyle.Render("["+m.cfg.Step2.GitProvider+"] (Required)")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("K8s Target:"), valueStyle.Render("["+m.cfg.Step2.K8sTarget+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("CI/CD Tools:"), valueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.CICDTools))))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Doc Sync:"), valueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.DocTools))))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Messenger Webhook:"), valueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.MessengerAlerts))))
+		sb.WriteString(m.renderRow(0, "Git Provider:", "["+m.cfg.Step2.GitProvider+"] (Required)"))
+		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"]"))
+		sb.WriteString(fmt.Sprintf("  %-20s %s\n", unfocusedLabelStyle.Render("CI/CD Tools:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.CICDTools))))
+		sb.WriteString(fmt.Sprintf("  %-20s %s\n", unfocusedLabelStyle.Render("Doc Sync:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.DocTools))))
+		sb.WriteString(fmt.Sprintf("  %-20s %s\n", unfocusedLabelStyle.Render("Messenger Webhook:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.MessengerAlerts))))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Press Enter on K8s or Git to run interactive Health Check]"))
+		sb.WriteString(hintStyle.Render("  [Press Enter/Space on Git/K8s to cycle provider targets]"))
 
 	case Step3:
 		sb.WriteString(headerStyle.Render("🛠️ Step 3: Harness TDD, Commit & PR Conventions"))
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Commit Convention:"), valueStyle.Render("["+m.cfg.Step3.CommitConvention+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Issue Key Format:"), valueStyle.Render("["+m.cfg.Step3.IssueKeyFormat+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("PR Template Style:"), valueStyle.Render("["+m.cfg.Step3.PRTemplateStyle+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("TDD First Mode:"), valueStyle.Render(fmt.Sprintf("[%v]", m.cfg.Step3.TDDMode))))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Local Sandbox Test:"), valueStyle.Render(fmt.Sprintf("[%v]", m.cfg.Step3.LocalSandboxTest))))
+		sb.WriteString(m.renderRow(0, "Commit Convention:", "["+m.cfg.Step3.CommitConvention+"]"))
+		sb.WriteString(m.renderRow(1, "PR Template Style:", "["+m.cfg.Step3.PRTemplateStyle+"]"))
+		sb.WriteString(m.renderRow(2, "TDD First Mode:", fmt.Sprintf("[%v]", m.cfg.Step3.TDDMode)))
+		sb.WriteString(m.renderRow(3, "Local Sandbox Test:", fmt.Sprintf("[%v]", m.cfg.Step3.LocalSandboxTest)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Auto-generates AGENTS.md, CLAUDE.md & Commit Msg Git Hooks]"))
+		sb.WriteString(hintStyle.Render("  [Configures Conventional Commits, PR Template & TDD loop]"))
 
 	case Step4:
 		sb.WriteString(headerStyle.Render("🚀 Step 4: Release & Deployment Pipeline"))
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Versioning:"), valueStyle.Render("["+m.cfg.Step4.VersioningStrategy+"]")))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Auto Changelog:"), valueStyle.Render(fmt.Sprintf("[%v]", m.cfg.Step4.AutoChangelog))))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Release Notes Sync:"), valueStyle.Render(fmt.Sprintf("[%v]", m.cfg.Step4.ReleaseNotesSync))))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", labelStyle.Render("Deploy Alerts:"), valueStyle.Render(fmt.Sprintf("[%v]", m.cfg.Step4.DeployAlert))))
+		sb.WriteString(m.renderRow(0, "Auto Changelog:", fmt.Sprintf("[%v]", m.cfg.Step4.AutoChangelog)))
+		sb.WriteString(m.renderRow(1, "Release Notes Sync:", fmt.Sprintf("[%v]", m.cfg.Step4.ReleaseNotesSync)))
+		sb.WriteString(m.renderRow(2, "Deploy Alerts:", fmt.Sprintf("[%v]", m.cfg.Step4.DeployAlert)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Triggers SemVer tagging and notifies Notion & Slack]"))
+		sb.WriteString(hintStyle.Render("  [Press Enter/Space to toggle auto release triggers & webhooks]"))
 	}
 
 	return sb.String()
