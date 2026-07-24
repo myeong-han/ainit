@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/myeong-han/ainit/pkg/config"
+	"github.com/myeong-han/ainit/pkg/generator"
 	"github.com/myeong-han/ainit/pkg/provider"
 )
 
@@ -38,15 +40,27 @@ func (s Step) String() string {
 	}
 }
 
+type Mode int
+
+const (
+	ModeWizard Mode = iota
+	ModePromptInput
+	ModeGenerating
+	ModeDone
+)
+
 type Model struct {
 	cfg         *config.Config
 	currentStep Step
 	cursor      int
+	mode        Mode
 	inputs      []textinput.Model
+	promptInput textarea.Model
 	width       int
 	height      int
 	statusMsg   string
 	quitting    bool
+	genResult   string
 }
 
 var (
@@ -70,7 +84,7 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#7D56F4")).
 			Padding(1, 2).
-			Width(82)
+			Width(84)
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -110,12 +124,19 @@ func NewModel(cfg *config.Config) Model {
 	ti.SetValue(cfg.Step1.ProjectName)
 	ti.Focus()
 
+	ta := textarea.New()
+	ta.Placeholder = "Enter your plain text architecture requirements here...\ne.g. 'Build a React frontend with Go microservices using Kafka event broker and Postgres DB'"
+	ta.SetWidth(78)
+	ta.SetHeight(8)
+
 	return Model{
 		cfg:         cfg,
 		currentStep: Step0,
 		cursor:      0,
+		mode:        ModeWizard,
 		inputs:      []textinput.Model{ti},
-		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate | 'Enter/Space' to cycle OpenCode providers",
+		promptInput: ta,
+		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate | 'Enter/Space' to cycle options",
 	}
 }
 
@@ -126,21 +147,67 @@ func (m Model) Init() tea.Cmd {
 func (m Model) getMaxCursorForStep() int {
 	switch m.currentStep {
 	case Step0:
-		return 3 // ProviderID, PrimaryModel, LicensingMode, FallbackModel
+		return 3
 	case Step1:
-		return 3 // ArchStyle, RepoStructure, SequenceDiagram, GitOpsDiagram
+		return 3
 	case Step2:
-		return 1 // GitProvider, K8sTarget
+		return 1
 	case Step3:
-		return 3 // CommitConvention, PRTemplateStyle, TDDMode, LocalSandboxTest
+		return 3
 	case Step4:
-		return 2 // AutoChangelog, ReleaseNotesSync, DeployAlert
+		return 3 // 0: Changelog, 1: ReleaseNotes, 2: Alerts, 3: [PROCEED TO ARCHITECTURE PROMPT INPUT]
 	default:
 		return 0
 	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.mode == ModePromptInput {
+		var cmd tea.Cmd
+		switch msg := msg.(tea.Msg).(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "ctrl+c", "q":
+				m.quitting = true
+				return m, tea.Quit
+			case "esc":
+				m.mode = ModeWizard
+				m.statusMsg = "Returned to Wizard settings"
+				return m, nil
+			case "ctrl+s", "ctrl+d": // Submit Architecture Prompt
+				m.mode = ModeGenerating
+				promptText := m.promptInput.Value()
+				if strings.TrimSpace(promptText) == "" {
+					promptText = "Default MSA architecture with Go backend & React frontend"
+				}
+
+				err := generator.GenerateHarnessProject(".", m.cfg, promptText)
+				if err != nil {
+					m.genResult = fmt.Sprintf("❌ Error generating project: %v", err)
+				} else {
+					m.genResult = "🎉 Architecture Spec, Mermaid Diagrams, Git & Agent Rules Generated Successfully!"
+				}
+				m.mode = ModeDone
+				return m, nil
+			}
+		}
+		m.promptInput, cmd = m.promptInput.Update(msg)
+		return m, cmd
+	}
+
+	if m.mode == ModeDone {
+		switch msg := msg.(tea.Msg).(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "ctrl+c", "q", "enter", "esc":
+				m.quitting = true
+				return m, tea.Quit
+			}
+		}
+		return m, nil
+	}
+
+	// ModeWizard update logic
 	switch msg := msg.(tea.Msg).(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -172,6 +239,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter", " ":
+			if m.currentStep == Step4 && m.cursor == 3 {
+				// Transition to Plain Text Architecture Prompt Input Mode
+				m.mode = ModePromptInput
+				m.promptInput.Focus()
+				m.statusMsg = "Type your architecture requirements in plain text. Press 'Ctrl+S' or 'Ctrl+D' when finished."
+				return m, textarea.Blink
+			}
 			m.toggleCurrentField()
 		}
 
@@ -188,7 +262,7 @@ func (m *Model) toggleCurrentField() {
 	case Step0:
 		providers := provider.GetAvailableProviders()
 		switch m.cursor {
-		case 0: // AI Provider Selection
+		case 0:
 			currIdx := -1
 			for i, p := range providers {
 				if p.ID == m.cfg.Step0.ProviderID {
@@ -205,7 +279,7 @@ func (m *Model) toggleCurrentField() {
 			}
 			m.statusMsg = fmt.Sprintf("Switched AI Provider to [%s] (%s)", nextProvider.Name, nextProvider.DefaultAuth)
 
-		case 1: // Primary Model Selection (Cascading from selected Provider)
+		case 1:
 			models := provider.GetModelsForProvider(m.cfg.Step0.ProviderID)
 			if len(models) > 0 {
 				currIdx := -1
@@ -217,10 +291,10 @@ func (m *Model) toggleCurrentField() {
 				}
 				nextIdx := (currIdx + 1) % len(models)
 				m.cfg.Step0.PrimaryModel = models[nextIdx].ID
-				m.statusMsg = fmt.Sprintf("Selected Primary Model: [%s] (Context: %dK)", models[nextIdx].Name, models[nextIdx].ContextWindow/1000)
+				m.statusMsg = fmt.Sprintf("Selected Primary Model: [%s]", models[nextIdx].Name)
 			}
 
-		case 2: // Licensing Auth Mode
+		case 2:
 			switch m.cfg.Step0.LicensingMode {
 			case "subscription":
 				m.cfg.Step0.LicensingMode = "apikey"
@@ -231,7 +305,7 @@ func (m *Model) toggleCurrentField() {
 			}
 			m.statusMsg = fmt.Sprintf("Auth Mode changed to [%s]", m.cfg.Step0.LicensingMode)
 
-		case 3: // Fallback Model Selection
+		case 3:
 			switch m.cfg.Step0.FallbackModel {
 			case "gpt-4o-mini":
 				m.cfg.Step0.FallbackModel = "claude-3-5-haiku"
@@ -247,7 +321,7 @@ func (m *Model) toggleCurrentField() {
 
 	case Step1:
 		switch m.cursor {
-		case 0: // ArchStyle
+		case 0:
 			switch m.cfg.Step1.ArchitectureStyle {
 			case "msa":
 				m.cfg.Step1.ArchitectureStyle = "monolith"
@@ -258,7 +332,7 @@ func (m *Model) toggleCurrentField() {
 			}
 			m.statusMsg = fmt.Sprintf("Changed Arch Style to [%s]", m.cfg.Step1.ArchitectureStyle)
 
-		case 1: // RepoStructure
+		case 1:
 			if m.cfg.Step1.RepoStructure == "monorepo" {
 				m.cfg.Step1.RepoStructure = "multirepo"
 			} else {
@@ -266,18 +340,18 @@ func (m *Model) toggleCurrentField() {
 			}
 			m.statusMsg = fmt.Sprintf("Changed Repo Layout to [%s]", m.cfg.Step1.RepoStructure)
 
-		case 2: // Sequence Diagram Toggle
+		case 2:
 			m.cfg.Step1.GenerateSequence = !m.cfg.Step1.GenerateSequence
 			m.statusMsg = fmt.Sprintf("Toggled Sequence Diagram Generation: [%v]", m.cfg.Step1.GenerateSequence)
 
-		case 3: // GitOps Diagram Toggle
+		case 3:
 			m.cfg.Step1.GenerateGitOps = !m.cfg.Step1.GenerateGitOps
 			m.statusMsg = fmt.Sprintf("Toggled GitOps Diagram Generation: [%v]", m.cfg.Step1.GenerateGitOps)
 		}
 
 	case Step2:
 		switch m.cursor {
-		case 0: // GitProvider
+		case 0:
 			if m.cfg.Step2.GitProvider == "github" {
 				m.cfg.Step2.GitProvider = "bitbucket"
 			} else {
@@ -285,7 +359,7 @@ func (m *Model) toggleCurrentField() {
 			}
 			m.statusMsg = fmt.Sprintf("Selected Git Provider: [%s]", m.cfg.Step2.GitProvider)
 
-		case 1: // K8sTarget
+		case 1:
 			switch m.cfg.Step2.K8sTarget {
 			case "local":
 				m.cfg.Step2.K8sTarget = "remote"
@@ -299,7 +373,7 @@ func (m *Model) toggleCurrentField() {
 
 	case Step3:
 		switch m.cursor {
-		case 0: // CommitConvention
+		case 0:
 			switch m.cfg.Step3.CommitConvention {
 			case "conventional":
 				m.cfg.Step3.CommitConvention = "gitmoji"
@@ -312,7 +386,7 @@ func (m *Model) toggleCurrentField() {
 			}
 			m.statusMsg = fmt.Sprintf("Changed Commit Convention to [%s]", m.cfg.Step3.CommitConvention)
 
-		case 1: // PRTemplateStyle
+		case 1:
 			switch m.cfg.Step3.PRTemplateStyle {
 			case "standard":
 				m.cfg.Step3.PRTemplateStyle = "minimal"
@@ -323,28 +397,33 @@ func (m *Model) toggleCurrentField() {
 			}
 			m.statusMsg = fmt.Sprintf("Selected PR Template Style: [%s]", m.cfg.Step3.PRTemplateStyle)
 
-		case 2: // TDDMode
+		case 2:
 			m.cfg.Step3.TDDMode = !m.cfg.Step3.TDDMode
 			m.statusMsg = fmt.Sprintf("Toggled TDD First Mode: [%v]", m.cfg.Step3.TDDMode)
 
-		case 3: // LocalSandboxTest
+		case 3:
 			m.cfg.Step3.LocalSandboxTest = !m.cfg.Step3.LocalSandboxTest
 			m.statusMsg = fmt.Sprintf("Toggled Local Sandbox Build Check: [%v]", m.cfg.Step3.LocalSandboxTest)
 		}
 
 	case Step4:
 		switch m.cursor {
-		case 0: // AutoChangelog
+		case 0:
 			m.cfg.Step4.AutoChangelog = !m.cfg.Step4.AutoChangelog
 			m.statusMsg = fmt.Sprintf("Toggled Auto Changelog: [%v]", m.cfg.Step4.AutoChangelog)
 
-		case 1: // ReleaseNotesSync
+		case 1:
 			m.cfg.Step4.ReleaseNotesSync = !m.cfg.Step4.ReleaseNotesSync
 			m.statusMsg = fmt.Sprintf("Toggled Release Notes Sync: [%v]", m.cfg.Step4.ReleaseNotesSync)
 
-		case 2: // DeployAlert
+		case 2:
 			m.cfg.Step4.DeployAlert = !m.cfg.Step4.DeployAlert
 			m.statusMsg = fmt.Sprintf("Toggled Deploy Webhook Alerts: [%v]", m.cfg.Step4.DeployAlert)
+
+		case 3:
+			m.mode = ModePromptInput
+			m.promptInput.Focus()
+			m.statusMsg = "Type your architecture requirements in plain text. Press 'Ctrl+S' or 'Ctrl+D' when finished."
 		}
 	}
 }
@@ -356,9 +435,36 @@ func (m Model) View() string {
 
 	var sb strings.Builder
 
-	// Header Title
 	sb.WriteString(titleStyle.Render("⚡ Agentic-Init (ainit) Harness TUI Engineering Tool"))
 	sb.WriteString("\n\n")
+
+	if m.mode == ModePromptInput {
+		sb.WriteString(headerStyle.Render("📝 Step 5: Input Architecture Requirements (Plain Text)"))
+		sb.WriteString("\n\n")
+		sb.WriteString(m.promptInput.View())
+		sb.WriteString("\n\n")
+		sb.WriteString(boxStyle.Render(fmt.Sprintf(
+			" Selected Config Summary:\n  • Provider: %s (%s)\n  • Arch: %s (%s)\n  • Git: %s\n  • Commit: %s",
+			m.cfg.Step0.ProviderID, m.cfg.Step0.PrimaryModel,
+			m.cfg.Step1.ArchitectureStyle, m.cfg.Step1.RepoStructure,
+			m.cfg.Step2.GitProvider, m.cfg.Step3.CommitConvention,
+		)))
+		sb.WriteString("\n\n")
+		sb.WriteString(statusStyle.Render(" Status: "))
+		sb.WriteString(m.statusMsg)
+		sb.WriteString("\n")
+		return sb.String()
+	}
+
+	if m.mode == ModeDone {
+		sb.WriteString(headerStyle.Render("🎉 Generation Pipeline Completed!"))
+		sb.WriteString("\n\n")
+		sb.WriteString(boxStyle.Render(m.genResult + "\n\nOutput files:\n • docs/ARCHITECTURE_SPEC.md\n • AGENTS.md\n • CLAUDE.md\n • .cursorrules\n • .github/copilot-instructions.md"))
+		sb.WriteString("\n\n")
+		sb.WriteString(statusStyle.Render(" Press Enter or 'q' to exit."))
+		sb.WriteString("\n")
+		return sb.String()
+	}
 
 	// Step Tabs Header
 	var tabs []string
@@ -453,13 +559,15 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(hintStyle.Render("  [Configures Conventional Commits, PR Template & TDD loop]"))
 
 	case Step4:
-		sb.WriteString(headerStyle.Render("🚀 Step 4: Release & Deployment Pipeline"))
+		sb.WriteString(headerStyle.Render("🚀 Step 4: Release Pipeline & Submit Setup"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Auto Changelog:", fmt.Sprintf("[%v]", m.cfg.Step4.AutoChangelog)))
 		sb.WriteString(m.renderRow(1, "Release Notes Sync:", fmt.Sprintf("[%v]", m.cfg.Step4.ReleaseNotesSync)))
 		sb.WriteString(m.renderRow(2, "Deploy Alerts:", fmt.Sprintf("[%v]", m.cfg.Step4.DeployAlert)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Press Enter/Space to toggle auto release triggers & webhooks]"))
+		sb.WriteString(m.renderRow(3, "👉 PROCEED TO PLAIN TEXT ARCHITECTURE INPUT 👈", ""))
+		sb.WriteString("\n")
+		sb.WriteString(hintStyle.Render("  [Select item 3 or press Enter to input plain text architecture requirements]"))
 	}
 
 	return sb.String()

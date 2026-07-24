@@ -1,12 +1,15 @@
 package generator
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/myeong-han/ainit/pkg/config"
 )
 
-// GenerateAgentContextFiles generates agent context rules for all major AI agent platforms,
-// establishing AGENTS.md as the Single Source of Truth.
+// GenerateAgentContextFiles generates agent context rules for all major AI agent platforms
 func GenerateAgentContextFiles(targetDir string) error {
 	files := map[string]string{
 		"AGENTS.md": `# Agentic-Init (ainit) Execution Rules
@@ -25,27 +28,17 @@ func GenerateAgentContextFiles(targetDir string) error {
 > Claude Code MUST strictly read, respect, and obey all instructions in AGENTS.md.
 `,
 		".cursorrules": `# Cursor Rules Configuration
-
-# CRITICAL: Always refer to AGENTS.md for all project execution rules, TDD loops, and commit conventions.
-# AGENTS.md is the Single Source of Truth for this codebase.
-
 - Always read AGENTS.md before making any code modifications.
 - Execute unit tests (make test) before finalizing any changes.
 `,
 		filepath.Join(".github", "copilot-instructions.md"): `# GitHub Copilot Custom Instructions
-
 All AI Copilot and Agent behaviors MUST be strictly governed by [AGENTS.md](../AGENTS.md).
-Refer to AGENTS.md as the Single Source of Truth.
 `,
 		".windsurfrules": `# Windsurf Rules Configuration
-
-# Refer to AGENTS.md for all project execution rules, TDD loops, and commit conventions.
-# AGENTS.md is the Single Source of Truth for this codebase.
+- Always read AGENTS.md before making any code modifications.
 `,
 		filepath.Join(".gemini", "rules"): `# Gemini & Antigravity Agent Rules
-
-# Refer to AGENTS.md for all project execution rules, TDD loops, and commit conventions.
-# AGENTS.md is the Single Source of Truth for this codebase.
+- Always read AGENTS.md before making any code modifications.
 `,
 	}
 
@@ -61,4 +54,89 @@ Refer to AGENTS.md as the Single Source of Truth.
 	}
 
 	return nil
+}
+
+// GenerateHarnessProject generates the complete architecture spec, Mermaid diagrams, and code structure
+func GenerateHarnessProject(targetDir string, cfg *config.Config, plainTextPrompt string) error {
+	if err := GenerateAgentContextFiles(targetDir); err != nil {
+		return err
+	}
+
+	projName := cfg.Step1.ProjectName
+	if projName == "" {
+		projName = "ainit-app"
+	}
+
+	archDoc := fmt.Sprintf(`# %s Architecture Specification
+
+## 1. Overview & Requirements
+**AI Provider**: %s (%s)
+**Primary Model**: %s
+**Architecture Style**: %s
+**Repository Structure**: %s
+
+### Plain Text Architecture Prompt Requirements
+> %s
+
+---
+
+## 2. Generated Mermaid Diagrams
+
+### 2.1 Microservices & Middleware Overview
+%s
+
+### 2.2 Sequence Diagram
+%s
+
+### 2.3 Ingress Traffic Flow
+%s
+
+### 2.4 GitOps & CI/CD Pipeline Flow
+%s
+
+---
+
+## 3. Harness Code Strategy
+- **TDD Mode**: %v
+- **Commit Convention**: %s
+- **Local Sandbox Check**: %v
+`,
+		projName,
+		cfg.Step0.ProviderID, cfg.Step0.LicensingMode,
+		cfg.Step0.PrimaryModel,
+		strings.ToUpper(cfg.Step1.ArchitectureStyle),
+		cfg.Step1.RepoStructure,
+		plainTextPrompt,
+		renderMSAOverviewMermaid(cfg),
+		renderSequenceMermaid(cfg),
+		renderTrafficMermaid(cfg),
+		renderGitOpsMermaid(cfg),
+		cfg.Step3.TDDMode,
+		cfg.Step3.CommitConvention,
+		cfg.Step3.LocalSandboxTest,
+	)
+
+	docsDir := filepath.Join(targetDir, "docs")
+	if err := os.MkdirAll(docsDir, 0755); err != nil {
+		return err
+	}
+
+	specPath := filepath.Join(docsDir, "ARCHITECTURE_SPEC.md")
+	return os.WriteFile(specPath, []byte(archDoc), 0644)
+}
+
+func renderMSAOverviewMermaid(cfg *config.Config) string {
+	return "```mermaid\nflowchart LR\n    User([Client]) --> Gateway[API Gateway]\n    Gateway --> Auth[Auth Service]\n    Gateway --> Core[Core App Domain]\n    Core --> DB[(Database)]\n    Core --> Kafka[Event Broker]\n```"
+}
+
+func renderSequenceMermaid(cfg *config.Config) string {
+	return "```mermaid\nsequenceDiagram\n    autonumber\n    Client->>Gateway: HTTP Request\n    Gateway->>Auth: Validate JWT Token\n    Auth-->>Gateway: 200 OK\n    Gateway->>Service: Process Business Logic\n    Service-->>Client: HTTP 200 Success\n```"
+}
+
+func renderTrafficMermaid(cfg *config.Config) string {
+	return "```mermaid\nflowchart TD\n    Internet --> Ingress[Nginx Ingress / Emissary]\n    Ingress --> ServiceMesh[Istio Service Mesh]\n    ServiceMesh --> PodA[App Pod 1]\n    ServiceMesh --> PodB[App Pod 2]\n```"
+}
+
+func renderGitOpsMermaid(cfg *config.Config) string {
+	return "```mermaid\nflowchart LR\n    GitPush([Git Commit Push]) --> Jenkins[Jenkins CI Test]\n    Jenkins --> Harbor[Container Registry Push]\n    Harbor --> ArgoCD[ArgoCD GitOps Sync]\n    ArgoCD --> K8s[Kubernetes Cluster]\n```"
 }
