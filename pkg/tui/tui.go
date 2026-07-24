@@ -56,24 +56,25 @@ type ChatMessage struct {
 }
 
 type Model struct {
-	cfg               *config.Config
-	cmdEngine         *command.CommandEngine
-	currentStep       Step
-	cursor            int
-	mode              Mode
-	inputs            []textinput.Model
-	promptInput       textarea.Model
-	chatHistory       []ChatMessage
-	slashDropdownOpen bool
-	slashCursor       int
-	slashOptions      []command.SlashOption
-	pendingGenCmd     string
-	pendingGenAction  command.ActionType
-	width             int
-	height            int
-	statusMsg         string
-	quitting          bool
-	genResult         string
+	cfg                    *config.Config
+	cmdEngine              *command.CommandEngine
+	currentStep            Step
+	cursor                 int
+	mode                   Mode
+	inputs                 []textinput.Model
+	promptInput            textarea.Model
+	chatHistory            []ChatMessage
+	slashDropdownOpen      bool
+	slashDropdownDismissed bool
+	slashCursor            int
+	slashOptions           []command.SlashOption
+	pendingGenCmd          string
+	pendingGenAction       command.ActionType
+	width                  int
+	height                 int
+	statusMsg              string
+	quitting               bool
+	genResult              string
 }
 
 var (
@@ -191,20 +192,21 @@ func NewModel(cfg *config.Config) Model {
 	}
 
 	return Model{
-		cfg:               cfg,
-		cmdEngine:         command.NewCommandEngine(cfg),
-		currentStep:       Step0,
-		cursor:            0,
-		mode:              ModePromptInput, // Default Main View is Chat
-		inputs:            []textinput.Model{ti},
-		promptInput:       ta,
-		chatHistory:       initialHistory,
-		slashDropdownOpen: false,
-		slashCursor:       0,
-		slashOptions:      command.GetAvailableSlashCommands(),
-		width:             100,
-		height:            28,
-		statusMsg:         "Main Chatting View | Type '/git-init <name>' to set project name | Press Ctrl+S to submit",
+		cfg:                    cfg,
+		cmdEngine:              command.NewCommandEngine(cfg),
+		currentStep:            Step0,
+		cursor:                 0,
+		mode:                   ModePromptInput, // Default Main View is Chat
+		inputs:                 []textinput.Model{ti},
+		promptInput:            ta,
+		chatHistory:            initialHistory,
+		slashDropdownOpen:      false,
+		slashDropdownDismissed: false,
+		slashCursor:            0,
+		slashOptions:           command.GetAvailableSlashCommands(),
+		width:                  100,
+		height:                 28,
+		statusMsg:              "Main Chatting View | Type '/git-init <name>' to set project name | Press Ctrl+S to submit",
 	}
 }
 
@@ -266,6 +268,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
+			// Reset dismissal when user types a fresh '/' character
+			if msg.String() == "/" {
+				m.slashDropdownDismissed = false
+			}
+
+			// Handle keyboard navigation when dropdown is explicitly open
 			if m.slashDropdownOpen {
 				switch msg.String() {
 				case "up", "k":
@@ -282,10 +290,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					selectedCmd := m.slashOptions[m.slashCursor].Name
 					m.promptInput.SetValue(selectedCmd + " ")
 					m.slashDropdownOpen = false
+					m.slashDropdownDismissed = true // Lock dropdown from re-opening until new /
 					m.statusMsg = fmt.Sprintf("Autocompleted '%s'. Add arguments and press Enter to execute.", selectedCmd)
 					return m, nil
 				case "esc":
 					m.slashDropdownOpen = false
+					m.slashDropdownDismissed = true // Lock dropdown from re-opening until new /
+					m.statusMsg = "Slash commands dropdown closed."
 					return m, nil
 				}
 			}
@@ -308,6 +319,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusMsg = "Switched to Config Wizard Form. Press 'Tab' to navigate steps or 'Esc' to return to Chat."
 					m.promptInput.Reset()
 					m.slashDropdownOpen = false
+					m.slashDropdownDismissed = false
 					return m, nil
 				}
 
@@ -318,6 +330,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusMsg = fmt.Sprintf("⚠️ Confirm generation for %s? [y/n]", val)
 						m.promptInput.Reset()
 						m.slashDropdownOpen = false
+						m.slashDropdownDismissed = false
 						return m, nil
 					}
 
@@ -331,6 +344,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.promptInput.Reset()
 					m.slashDropdownOpen = false
+					m.slashDropdownDismissed = false
 					return m, nil
 				}
 
@@ -340,6 +354,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				m.promptInput.Reset()
 				m.slashDropdownOpen = false
+				m.slashDropdownDismissed = false
 				return m, nil
 
 			case "ctrl+s", "ctrl+d":
@@ -353,7 +368,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.promptInput, cmd = m.promptInput.Update(msg)
 
 		currVal := strings.TrimSpace(m.promptInput.Value())
-		if strings.HasPrefix(currVal, "/") && !strings.Contains(currVal, " ") {
+		if currVal == "" {
+			m.slashDropdownDismissed = false
+		}
+
+		// Only open dropdown if NOT dismissed, starts with '/', and does NOT contain space
+		if !m.slashDropdownDismissed && strings.HasPrefix(currVal, "/") && !strings.Contains(currVal, " ") {
 			m.slashDropdownOpen = true
 			m.slashOptions = command.GetAvailableSlashCommands()
 		} else {
@@ -717,7 +737,7 @@ func (m Model) renderLeftColumn(width int) string {
 		m.promptInput.SetWidth(width - 2)
 		sb.WriteString(m.promptInput.View())
 		sb.WriteString("\n\n")
-		sb.WriteString(hintStyle.Render("[Type '/' for Slash Commands Dropdown | Press Enter/Tab to select & edit | Press Ctrl+S to Submit]"))
+		sb.WriteString(hintStyle.Render("[Type '/' for Slash Commands Dropdown | Press Enter/Tab to select & edit | Press Esc to close dropdown]"))
 		return sb.String()
 	}
 
@@ -734,7 +754,7 @@ func (m Model) renderLeftColumn(width int) string {
 
 func (m Model) renderSlashDropdown(width int) string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("⚡ Slash Commands (Use ↑/↓ to navigate, Enter/Tab to select & edit):") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("⚡ Slash Commands (Use ↑/↓ to navigate, Enter/Tab to select & edit, Esc to close):") + "\n")
 
 	for i, opt := range m.slashOptions {
 		if i == m.slashCursor {
