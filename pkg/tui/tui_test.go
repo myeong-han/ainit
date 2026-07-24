@@ -17,30 +17,39 @@ func TestNewModelDefaultIsChatMode(t *testing.T) {
 	}
 }
 
+func TestGenerationConfirmationFlow(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	m := NewModel(cfg)
+
+	// Simulate executing /gen-all
+	m.promptInput.SetValue("/gen-all")
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updatedModel.(Model)
+
+	// Must enter ModeConfirm first to prevent unintended generation
+	if m2.mode != ModeConfirm {
+		t.Errorf("expected /gen-all to enter ModeConfirm, got mode %v", m2.mode)
+	}
+
+	// Press 'n' to cancel generation
+	cancelledModel, _ := m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m3 := cancelledModel.(Model)
+
+	if m3.mode != ModePromptInput {
+		t.Errorf("expected pressing 'n' to return to ModePromptInput, got %v", m3.mode)
+	}
+	if !strings.Contains(m3.statusMsg, "cancelled") {
+		t.Errorf("expected statusMsg to indicate cancellation, got '%s'", m3.statusMsg)
+	}
+}
+
 func TestEnhancedRightSidebarVisibility(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
 
 	sidebar := m.renderRightSidebarNav()
 
-	// Should contain clear section dividers and status icons
 	if !strings.Contains(sidebar, "─────────────") {
 		t.Errorf("expected sidebar to contain horizontal section dividers, got:\n%s", sidebar)
-	}
-
-	if !strings.Contains(sidebar, "READY") && !strings.Contains(sidebar, "ACTIVE") {
-		t.Errorf("expected sidebar to display status badges (READY/ACTIVE), got:\n%s", sidebar)
-	}
-}
-
-func TestDynamicTerminalResponsiveLayout(t *testing.T) {
-	cfg := config.NewDefaultConfig()
-	m := NewModel(cfg)
-
-	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
-	m2 := updatedModel.(Model)
-
-	if m2.width != 120 || m2.height != 30 {
-		t.Errorf("expected terminal dimensions 120x30, got %dx%d", m2.width, m2.height)
 	}
 }

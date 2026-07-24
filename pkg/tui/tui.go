@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/myeong-han/ainit/pkg/command"
 	"github.com/myeong-han/ainit/pkg/config"
-	"github.com/myeong-han/ainit/pkg/generator"
 	"github.com/myeong-han/ainit/pkg/provider"
 )
 
@@ -46,6 +45,7 @@ type Mode int
 const (
 	ModePromptInput Mode = iota // Default Main Chatting Mode
 	ModeWizard                  // Step Config Form Mode (via /set-confs)
+	ModeConfirm                 // Confirmation Prompt before execution
 	ModeGenerating
 	ModeDone
 )
@@ -67,6 +67,8 @@ type Model struct {
 	slashDropdownOpen bool
 	slashCursor       int
 	slashOptions      []command.SlashOption
+	pendingGenCmd     string
+	pendingGenAction  command.ActionType
 	width             int
 	height            int
 	statusMsg         string
@@ -118,6 +120,11 @@ var (
 
 	sidebarDividerStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#444444"))
+
+	confirmBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(lipgloss.Color("#FFAF00")).
+			Padding(1, 2)
 
 	focusedLabelStyle = lipgloss.NewStyle().
 				Bold(true).
@@ -171,7 +178,7 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Type '/' for Slash Commands (/gen-all, /gen-docs, /gen-codes, /gen-gitops, /set-confs)..."
+	ta.Placeholder = "Type '/' for Slash Commands (/gen-all, /gen-docs, /gen-codes, /gen-gitops, /set-name)..."
 	ta.SetWidth(60)
 	ta.SetHeight(4)
 	ta.Focus()
@@ -179,7 +186,7 @@ func NewModel(cfg *config.Config) Model {
 	initialHistory := []ChatMessage{
 		{
 			Sender:  "Agent",
-			Content: "Welcome to Agentic-Init (ainit)! Type '/' for Slash Commands (/gen-all, /set-confs --name) or enter plain text requirements.",
+			Content: "Welcome to Agentic-Init (ainit)! Type '/' for Slash Commands (/gen-all, /set-name) or enter plain text requirements.",
 		},
 	}
 
@@ -227,6 +234,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	}
+
+	if m.mode == ModeConfirm {
+		switch msg := msg.(tea.Msg).(type) {
+		case tea.KeyMsg:
+			switch strings.ToLower(msg.String()) {
+			case "y", "enter":
+				m.mode = ModeGenerating
+				res, err := m.executePendingGeneration()
+				if err != nil {
+					m.genResult = fmt.Sprintf("❌ Generation failed: %v", err)
+				} else {
+					m.genResult = res
+				}
+				m.mode = ModeDone
+				return m, nil
+
+			case "n", "esc":
+				m.mode = ModePromptInput
+				m.statusMsg = "⚠️ Generation process cancelled by user."
+				m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: "⚠️ Generation pipeline cancelled."})
+				return m, textarea.Blink
+			}
+		}
+		return m, nil
 	}
 
 	if m.mode == ModePromptInput {
@@ -288,6 +320,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				if command.IsSlashCommand(val) {
+					if val == "/gen-docs" || val == "/gen-codes" || val == "/gen-gitops" || val == "/gen-all" {
+						m.pendingGenCmd = val
+						m.mode = ModeConfirm
+						m.statusMsg = fmt.Sprintf("⚠️ Confirm generation for %s? [y/n]", val)
+						m.promptInput.Reset()
+						m.slashDropdownOpen = false
+						return m, nil
+					}
+
 					res, err := m.cmdEngine.Execute(val)
 					if err != nil {
 						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: fmt.Sprintf("❌ Error: %v", err)})
@@ -295,10 +336,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: res.Message})
 						m.statusMsg = res.Message
-						if res.Action == command.ActionGenDocs || res.Action == command.ActionGenCodes || res.Action == command.ActionGenGitOps || res.Action == command.ActionGenAll {
-							m.mode = ModeDone
-							m.genResult = res.Message
-						}
 					}
 					m.promptInput.Reset()
 					m.slashDropdownOpen = false
@@ -314,22 +351,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 
 			case "ctrl+s", "ctrl+d":
-				m.mode = ModeGenerating
-				promptText := m.promptInput.Value()
-				if strings.TrimSpace(promptText) == "" && len(m.chatHistory) > 0 {
-					promptText = m.chatHistory[len(m.chatHistory)-1].Content
-				}
-				if strings.TrimSpace(promptText) == "" {
-					promptText = "Default MSA architecture with Go backend & React frontend"
-				}
-
-				err := generator.GenerateAll(".", m.cfg, promptText)
-				if err != nil {
-					m.genResult = fmt.Sprintf("❌ Error generating project: %v", err)
-				} else {
-					m.genResult = "🎉 Architecture Spec, Mermaid Diagrams, GitOps Manifests & Agent Rules Generated Successfully!"
-				}
-				m.mode = ModeDone
+				m.pendingGenCmd = "/gen-all"
+				m.mode = ModeConfirm
+				m.statusMsg = "⚠️ Confirm full generation pipeline? [y/n]"
 				return m, nil
 			}
 		}
@@ -409,6 +433,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) executePendingGeneration() (string, error) {
+	cmdVal := m.pendingGenCmd
+	if cmdVal == "" {
+		cmdVal = "/gen-all"
+	}
+
+	res, err := m.cmdEngine.Execute(cmdVal)
+	if err != nil {
+		return "", err
+	}
+	return res.Message, nil
 }
 
 func (m *Model) toggleCurrentField() {
@@ -645,6 +682,26 @@ func (m Model) View() string {
 }
 
 func (m Model) renderLeftColumn(width int) string {
+	if m.mode == ModeConfirm {
+		projName := m.cfg.Step1.ProjectName
+		if projName == "" {
+			projName = "ainit-app"
+		}
+
+		var sb strings.Builder
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFAF00")).Render("⚠️ CONFIRM CODE & DOC GENERATION PIPELINE ⚠️"))
+		sb.WriteString("\n\n")
+		sb.WriteString(fmt.Sprintf("• Trigger Command : %s\n", m.pendingGenCmd))
+		sb.WriteString(fmt.Sprintf("• Target App Name : %s\n", projName))
+		sb.WriteString(fmt.Sprintf("• Target Provider : %s (%s)\n", m.cfg.Step0.ProviderID, m.cfg.Step0.PrimaryModel))
+		sb.WriteString(fmt.Sprintf("• Output Paths    : docs/, gitops/, AGENTS.md, .cursorrules\n\n"))
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Are you sure you want to proceed with file generation?"))
+		sb.WriteString("\n\n")
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#5AF78E")).Render("[Press 'y' or Enter to CONFIRM]  ") + lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Render("[Press 'n' or Esc to CANCEL]"))
+
+		return confirmBoxStyle.Width(width - 2).Render(sb.String())
+	}
+
 	if m.mode == ModePromptInput {
 		var sb strings.Builder
 		sb.WriteString(headerStyle.Render("💬 Main Architecture Chatting Session"))
