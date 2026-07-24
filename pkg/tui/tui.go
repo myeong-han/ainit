@@ -173,6 +173,22 @@ var (
 			Bold(true)
 )
 
+func filterSlashCommands(prefix string) []command.SlashOption {
+	all := command.GetAvailableSlashCommands()
+	if prefix == "" || prefix == "/" {
+		return all
+	}
+
+	var filtered []command.SlashOption
+	lowerPrefix := strings.ToLower(prefix)
+	for _, opt := range all {
+		if strings.HasPrefix(strings.ToLower(opt.Name), lowerPrefix) {
+			filtered = append(filtered, opt)
+		}
+	}
+	return filtered
+}
+
 func NewModel(cfg *config.Config) Model {
 	ti := textinput.New()
 	ti.Placeholder = "unknown"
@@ -286,12 +302,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				case "tab", "enter", "right":
-					selectedCmd := m.slashOptions[m.slashCursor].Name
-					m.promptInput.SetValue(selectedCmd + " ")
-					m.slashDropdownOpen = false
-					m.slashDropdownDismissed = true
-					m.statusMsg = fmt.Sprintf("Autocompleted '%s'. Add arguments and press Enter to execute.", selectedCmd)
-					return m, nil
+					if len(m.slashOptions) > 0 && m.slashCursor < len(m.slashOptions) {
+						selectedCmd := m.slashOptions[m.slashCursor].Name
+						m.promptInput.SetValue(selectedCmd + " ")
+						m.slashDropdownOpen = false
+						m.slashDropdownDismissed = true
+						m.statusMsg = fmt.Sprintf("Autocompleted '%s'. Add arguments and press Enter to execute.", selectedCmd)
+						return m, nil
+					}
 				case "esc":
 					m.slashDropdownOpen = false
 					m.slashDropdownDismissed = true
@@ -371,9 +389,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.slashDropdownDismissed = false
 		}
 
+		// Dynamically filter slash commands based on typed prefix (evaluated AFTER textarea update)
 		if !m.slashDropdownDismissed && strings.HasPrefix(currVal, "/") && !strings.Contains(currVal, " ") {
-			m.slashDropdownOpen = true
-			m.slashOptions = command.GetAvailableSlashCommands()
+			filtered := filterSlashCommands(currVal)
+			if len(filtered) > 0 {
+				m.slashOptions = filtered
+				if m.slashCursor >= len(filtered) {
+					m.slashCursor = 0
+				}
+				m.slashDropdownOpen = true
+			} else {
+				m.slashDropdownOpen = false
+			}
 		} else {
 			m.slashDropdownOpen = false
 		}
