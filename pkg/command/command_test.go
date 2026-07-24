@@ -12,15 +12,29 @@ func TestGetAvailableSlashCommands(t *testing.T) {
 		t.Fatal("expected non-empty list of slash commands")
 	}
 
-	foundSetConfs := false
+	foundGitInit := false
 	for _, c := range cmds {
-		if c.Name == "/set-confs" {
-			foundSetConfs = true
+		if c.Name == "/git-init" {
+			foundGitInit = true
 		}
 	}
 
-	if !foundSetConfs {
-		t.Error("expected /set-confs in available slash commands")
+	if !foundGitInit {
+		t.Error("expected /git-init in available slash commands")
+	}
+}
+
+func TestParseAndExecuteGitInit(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cmdEngine := NewCommandEngine(cfg)
+
+	result, err := cmdEngine.Execute("/git-init myeong-han/ainit")
+	if err != nil {
+		t.Fatalf("expected no error executing /git-init, got: %v", err)
+	}
+
+	if result.Action != ActionGitInit {
+		t.Errorf("expected action ActionGitInit, got %v", result.Action)
 	}
 }
 

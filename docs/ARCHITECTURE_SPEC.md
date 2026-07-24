@@ -1,8 +1,8 @@
 # ainit-project Architecture Specification
 
 ## 1. Overview & Requirements
-**AI Provider**: anthropic (subscription)
-**Primary Model**: claude-3-5-sonnet-20241022
+**AI Provider**: openai (apikey)
+**Primary Model**: gpt-4o
 **Architecture Style**: MSA
 **Repository Structure**: monorepo
 

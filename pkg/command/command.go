@@ -3,10 +3,12 @@ package command
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/myeong-han/ainit/pkg/config"
 	"github.com/myeong-han/ainit/pkg/generator"
+	"github.com/myeong-han/ainit/pkg/git"
 )
 
 type ActionType int
@@ -16,6 +18,7 @@ const (
 	ActionSetConfs
 	ActionGenDocs
 	ActionGenCodes
+	ActionGitInit
 	ActionHelp
 )
 
@@ -41,6 +44,7 @@ func NewCommandEngine(cfg *config.Config) *CommandEngine {
 // GetAvailableSlashCommands returns the list of supported slash commands for UI autocomplete dropdown
 func GetAvailableSlashCommands() []SlashOption {
 	return []SlashOption{
+		{Name: "/git-init", Description: "Clone existing repo or initialize new git repository & update work-dir", Example: "/git-init myeong-han/ainit"},
 		{Name: "/set-confs", Description: "Configure AI Provider, Arch, Git & Conventions", Example: "/set-confs --provider openai --arch msa"},
 		{Name: "/gen-docs", Description: "Generate Architecture Spec & Mermaid Diagrams", Example: "/gen-docs"},
 		{Name: "/gen-codes", Description: "Generate Agent Context Rules & Scaffolding", Example: "/gen-codes"},
@@ -64,6 +68,8 @@ func (e *CommandEngine) Execute(input string) (*Result, error) {
 	cmdName := strings.ToLower(parts[0])
 
 	switch cmdName {
+	case "/git-init":
+		return e.handleGitInit(parts[1:])
 	case "/set-confs":
 		return e.handleSetConfs(parts[1:])
 	case "/gen-docs":
@@ -75,6 +81,36 @@ func (e *CommandEngine) Execute(input string) (*Result, error) {
 	default:
 		return nil, fmt.Errorf("unknown slash command '%s'. Type '/help' for available commands", cmdName)
 	}
+}
+
+func (e *CommandEngine) handleGitInit(args []string) (*Result, error) {
+	repoPath := "myeong-han/ainit"
+	if len(args) > 0 {
+		repoPath = args[0]
+	}
+
+	provider := e.cfg.Step2.GitProvider
+	if provider == "" {
+		provider = "github"
+	}
+
+	repoName := repoPath
+	if parts := strings.Split(repoPath, "/"); len(parts) == 2 {
+		repoName = parts[1]
+	}
+	targetDir := filepath.Join(".", repoName)
+
+	res, err := git.InitOrCloneRepository(provider, repoPath, targetDir)
+	if err != nil {
+		return nil, fmt.Errorf("git-init failed: %v", err)
+	}
+
+	msg := fmt.Sprintf("🐙 [%s] %s\nUpdated Working Directory: %s", strings.ToUpper(res.Action), res.Message, res.WorkDir)
+
+	return &Result{
+		Action:  ActionGitInit,
+		Message: msg,
+	}, nil
 }
 
 func (e *CommandEngine) handleSetConfs(args []string) (*Result, error) {
@@ -150,6 +186,7 @@ func (e *CommandEngine) handleGenCodes() (*Result, error) {
 
 func (e *CommandEngine) handleHelp() (*Result, error) {
 	helpMsg := `Available Slash Commands:
+• /git-init [owner/repo] : Clone existing repo or initialize new git repository & update work-dir
 • /set-confs --provider <id> --arch <msa|monolith> --git <github|bitbucket> --commit <conventional|gitmoji>
 • /gen-docs  : Generate docs/ARCHITECTURE_SPEC.md & 4 Mermaid diagrams
 • /gen-codes : Generate AGENTS.md, CLAUDE.md & cross-agent context rules

@@ -21,7 +21,6 @@ func TestSlashCommandDropdownActivationAndSelection(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
 
-	// Simulate typing '/' in promptInput
 	m.promptInput.SetValue("/")
 	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	m2 := updatedModel.(Model)
@@ -30,12 +29,12 @@ func TestSlashCommandDropdownActivationAndSelection(t *testing.T) {
 		t.Error("expected slashDropdownOpen to be true after typing '/'")
 	}
 
-	// Press Tab to autocomplete current selected dropdown item (/set-confs)
+	// Press Tab to autocomplete first selected dropdown item (/git-init)
 	updatedModel, _ = m2.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m3 := updatedModel.(Model)
 
-	if !strings.HasPrefix(m3.promptInput.Value(), "/set-confs") {
-		t.Errorf("expected promptInput value to be autocompleted with '/set-confs', got '%s'", m3.promptInput.Value())
+	if !strings.HasPrefix(m3.promptInput.Value(), "/git-init") {
+		t.Errorf("expected promptInput value to be autocompleted with '/git-init', got '%s'", m3.promptInput.Value())
 	}
 }
 
