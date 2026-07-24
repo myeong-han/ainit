@@ -161,7 +161,8 @@ var (
 			Bold(true)
 
 	agentChatStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FAFAFA"))
+			Foreground(lipgloss.Color("#FAFAFA")).
+			Bold(true)
 
 	hintStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262")).
@@ -246,7 +247,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = ModeGenerating
 				res, err := m.executePendingGeneration()
 				if err != nil {
-					m.genResult = fmt.Sprintf("❌ Generation failed: %v", err)
+					m.genResult = fmt.Sprintf("[!] Generation failed: %v", err)
 				} else {
 					m.genResult = res
 				}
@@ -255,8 +256,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "n", "esc":
 				m.mode = ModePromptInput
-				m.statusMsg = "⚠️ Generation process cancelled by user."
-				m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: "⚠️ Generation pipeline cancelled."})
+				m.statusMsg = "[!] Generation process cancelled by user."
+				m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: "[!] Generation pipeline cancelled."})
 				return m, textarea.Blink
 			}
 		}
@@ -325,7 +326,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if val == "/gen-docs" || val == "/gen-codes" || val == "/gen-gitops" || val == "/gen-all" {
 						m.pendingGenCmd = val
 						m.mode = ModeConfirm
-						m.statusMsg = fmt.Sprintf("⚠️ Confirm generation for %s? [y/n]", val)
+						m.statusMsg = fmt.Sprintf("[!] Confirm generation for %s? [y/n]", val)
 						m.promptInput.Reset()
 						m.slashDropdownOpen = false
 						m.slashDropdownDismissed = false
@@ -334,7 +335,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					res, err := m.cmdEngine.Execute(val)
 					if err != nil {
-						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: fmt.Sprintf("❌ Error: %v", err)})
+						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: fmt.Sprintf("[!] Error: %v", err)})
 						m.statusMsg = fmt.Sprintf("Slash Command Error: %v", err)
 					} else {
 						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: res.Message})
@@ -358,7 +359,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+s", "ctrl+d":
 				m.pendingGenCmd = "/gen-all"
 				m.mode = ModeConfirm
-				m.statusMsg = "⚠️ Confirm full generation pipeline? [y/n]"
+				m.statusMsg = "[!] Confirm full generation pipeline? [y/n]"
 				return m, nil
 			}
 		}
@@ -635,7 +636,7 @@ func (m Model) View() string {
 
 	var sb strings.Builder
 
-	sb.WriteString(titleStyle.Render("⚡ Agentic-Init (ainit) Harness TUI Engineering Tool"))
+	sb.WriteString(titleStyle.Render("Agentic-Init (ainit) Harness TUI Engineering Tool"))
 	sb.WriteString("\n\n")
 
 	sidebarWidth := 30
@@ -698,7 +699,7 @@ func (m Model) renderLeftColumn(width int) string {
 		}
 
 		var sb strings.Builder
-		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFAF00")).Render("⚠️ CONFIRM CODE & DOC GENERATION PIPELINE ⚠️"))
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFAF00")).Render("[!] CONFIRM CODE & DOC GENERATION PIPELINE"))
 		sb.WriteString("\n\n")
 		sb.WriteString(fmt.Sprintf("• Trigger Command : %s\n", m.pendingGenCmd))
 		sb.WriteString(fmt.Sprintf("• Target App Name : %s\n", projName))
@@ -713,14 +714,14 @@ func (m Model) renderLeftColumn(width int) string {
 
 	if m.mode == ModePromptInput {
 		var sb strings.Builder
-		sb.WriteString(headerStyle.Render("💬 Main Architecture Chatting Session"))
+		sb.WriteString(headerStyle.Render("Main Architecture Chatting Session"))
 		sb.WriteString("\n\n")
 
 		for _, msg := range m.chatHistory {
 			if msg.Sender == "User" {
-				sb.WriteString(userChatStyle.Render("👤 User: ") + msg.Content + "\n")
+				sb.WriteString(userChatStyle.Render("[User] ") + msg.Content + "\n")
 			} else {
-				sb.WriteString(agentChatStyle.Render("🤖 Agent: ") + msg.Content + "\n")
+				sb.WriteString(agentChatStyle.Render("[Agent] ") + msg.Content + "\n")
 			}
 		}
 
@@ -740,7 +741,7 @@ func (m Model) renderLeftColumn(width int) string {
 
 	if m.mode == ModeDone {
 		var sb strings.Builder
-		sb.WriteString(headerStyle.Render("🎉 Generation Pipeline Completed!"))
+		sb.WriteString(headerStyle.Render("Generation Pipeline Completed!"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.genResult + "\n\nOutput files:\n • docs/ARCHITECTURE_SPEC.md\n • gitops/helm & gitops/argocd\n • AGENTS.md & CLAUDE.md")
 		return sb.String()
@@ -751,7 +752,7 @@ func (m Model) renderLeftColumn(width int) string {
 
 func (m Model) renderSlashDropdown(width int) string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("⚡ Slash Commands (Use ↑/↓ to navigate, Enter/Tab to select & edit, Esc to close):") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Slash Commands (Use ↑/↓ to navigate, Enter/Tab to select & edit, Esc to close):") + "\n")
 
 	for i, opt := range m.slashOptions {
 		if i == m.slashCursor {
@@ -768,7 +769,7 @@ func (m Model) renderRightSidebarNav() string {
 	var sb strings.Builder
 	divider := sidebarDividerStyle.Render("──────────────────────")
 
-	sb.WriteString(sidebarHeaderStyle.Render("📊 CONFIG STATUS NAV"))
+	sb.WriteString(sidebarHeaderStyle.Render("CONFIG STATUS NAV"))
 	sb.WriteString("\n")
 	sb.WriteString(divider)
 	sb.WriteString("\n\n")
@@ -781,7 +782,7 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(divider + "\n\n")
 
 	// Step 0: AI Licensing & Provider
-	sb.WriteString(sidebarSectionStyle.Render("🤖 Step 0: AI Licensing") + "\n")
+	sb.WriteString(sidebarSectionStyle.Render("Step 0: AI Licensing") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Prov :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.ProviderID, 11))))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Model:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.PrimaryModel, 11))))
 	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Auth :"), sidebarReadyStyle.Render("["+m.cfg.Step0.LicensingMode+"]")))
@@ -796,14 +797,14 @@ func (m Model) renderRightSidebarNav() string {
 	if m.cfg.Step1.GenerateGitOps {
 		gitopsStr = "Y"
 	}
-	sb.WriteString(sidebarSectionStyle.Render("🏗️ Step 1: Arch Spec") + "\n")
+	sb.WriteString(sidebarSectionStyle.Render("Step 1: Arch Spec") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s (%s)\n", sidebarKeyStyle.Render("• Style:"), sidebarValStyle.Render(m.cfg.Step1.ArchitectureStyle), m.cfg.Step1.RepoStructure))
 	sb.WriteString(fmt.Sprintf("%s Seq(%s) Git(%s)\n\n", sidebarKeyStyle.Render("• Diag :"), seqStr, gitopsStr))
 	sb.WriteString(divider + "\n\n")
 
 	// Step 2: MCP Tooling
-	sb.WriteString(sidebarSectionStyle.Render("🔌 Step 2: MCP Connections") + "\n")
-	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render("🟢 READY")))
+	sb.WriteString(sidebarSectionStyle.Render("Step 2: MCP Connections") + "\n")
+	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render("[READY]")))
 	sb.WriteString(fmt.Sprintf("%s %s | %s\n\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(m.cfg.Step2.K8sTarget), sidebarReadyStyle.Render("ArgoCD:ON")))
 	sb.WriteString(divider + "\n\n")
 
@@ -816,7 +817,7 @@ func (m Model) renderRightSidebarNav() string {
 	if m.cfg.Step3.LocalSandboxTest {
 		sbStr = "Y"
 	}
-	sb.WriteString(sidebarSectionStyle.Render("🛠️ Step 3: Harness & TDD") + "\n")
+	sb.WriteString(sidebarSectionStyle.Render("Step 3: Harness & TDD") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Commit:"), sidebarValStyle.Render(m.cfg.Step3.CommitConvention)))
 	sb.WriteString(fmt.Sprintf("%s TDD(%s) Sbox(%s)\n\n", sidebarKeyStyle.Render("• Mode  :"), tddStr, sbStr))
 	sb.WriteString(divider + "\n\n")
@@ -826,7 +827,7 @@ func (m Model) renderRightSidebarNav() string {
 	if m.cfg.Step4.ReleaseNotesSync {
 		syncStr = "Y"
 	}
-	sb.WriteString(sidebarSectionStyle.Render("🚀 Step 4: Release Pipeline") + "\n")
+	sb.WriteString(sidebarSectionStyle.Render("Step 4: Release Pipeline") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• SemVer:"), sidebarValStyle.Render(m.cfg.Step4.VersioningStrategy)))
 	sb.WriteString(fmt.Sprintf("%s Sync(%s)\n", sidebarKeyStyle.Render("• Slack :"), syncStr))
 
@@ -865,7 +866,7 @@ func (m Model) renderStepBody() string {
 			provName = providerObj.Name
 		}
 
-		sb.WriteString(headerStyle.Render("🤖 Step 0: OpenCode AI Provider Catalog"))
+		sb.WriteString(headerStyle.Render("Step 0: OpenCode AI Provider Catalog"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "AI Provider:", "["+provName+"]"))
 		sb.WriteString(m.renderRow(1, "Primary Model:", "["+truncateStr(m.cfg.Step0.PrimaryModel, 16)+"]"))
@@ -875,7 +876,7 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(hintStyle.Render("[Press Enter to cycle OpenCode Providers]"))
 
 	case Step1:
-		sb.WriteString(headerStyle.Render("🏗️ Step 1: Architecture Spec & Mermaid"))
+		sb.WriteString(headerStyle.Render("Step 1: Architecture Spec & Mermaid"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Arch Style:", "["+m.cfg.Step1.ArchitectureStyle+"]"))
 		sb.WriteString(m.renderRow(1, "Repo Structure:", "["+m.cfg.Step1.RepoStructure+"]"))
@@ -885,7 +886,7 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(hintStyle.Render("[Press Enter/Space to toggle specs]"))
 
 	case Step2:
-		sb.WriteString(headerStyle.Render("🔌 Step 2: MCP Tooling Connections"))
+		sb.WriteString(headerStyle.Render("Step 2: MCP Tooling Connections"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Git Provider:", "["+m.cfg.Step2.GitProvider+"] (READY)"))
 		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"]"))
@@ -895,7 +896,7 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(hintStyle.Render("[Press Enter on Git/K8s to toggle]"))
 
 	case Step3:
-		sb.WriteString(headerStyle.Render("🛠️ Step 3: Harness TDD & Conventions"))
+		sb.WriteString(headerStyle.Render("Step 3: Harness TDD & Conventions"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Commit Conv:", "["+m.cfg.Step3.CommitConvention+"]"))
 		sb.WriteString(m.renderRow(1, "PR Template:", "["+m.cfg.Step3.PRTemplateStyle+"]"))
@@ -905,7 +906,7 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(hintStyle.Render("[Configures Conventional Commits & TDD]"))
 
 	case Step4:
-		sb.WriteString(headerStyle.Render("🚀 Step 4: Release & Submit Setup"))
+		sb.WriteString(headerStyle.Render("Step 4: Release & Submit Setup"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Auto Changelog:", fmt.Sprintf("[%v]", m.cfg.Step4.AutoChangelog)))
 		sb.WriteString(m.renderRow(1, "Release Sync:", fmt.Sprintf("[%v]", m.cfg.Step4.ReleaseNotesSync)))

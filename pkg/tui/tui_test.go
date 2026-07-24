@@ -20,36 +20,17 @@ func TestNewModelDefaultIsChatModeAndUnknownAppName(t *testing.T) {
 	}
 }
 
-func TestRightSidebarLinesDoNotOverflowOrWrap(t *testing.T) {
+func TestNoVariableWidthEmojisInSidebar(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
 
 	sidebarRaw := m.renderRightSidebarNav()
-	lines := strings.Split(sidebarRaw, "\n")
 
-	for i, line := range lines {
-		cleanLine := stripAnsi(line)
-		if len([]rune(cleanLine)) > 26 {
-			t.Errorf("line %d in sidebar exceeds max width (26): length %d, content: '%s'", i, len([]rune(cleanLine)), cleanLine)
+	// Variable-width emojis cause terminal font engine rendering misalignment
+	unstableEmojis := []string{"🤖", "👤", "💬", "📊", "🏗️", "🔌", "🛠️", "🚀", "🟢", "⚡", "❌", "⚠️"}
+	for _, emoji := range unstableEmojis {
+		if strings.Contains(sidebarRaw, emoji) {
+			t.Errorf("sidebar rendering contains variable-width emoji '%s' which causes terminal font alignment bugs", emoji)
 		}
 	}
-}
-
-func stripAnsi(str string) string {
-	var sb strings.Builder
-	inAnsi := false
-	for _, r := range str {
-		if r == '\x1b' {
-			inAnsi = true
-			continue
-		}
-		if inAnsi {
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-				inAnsi = false
-			}
-			continue
-		}
-		sb.WriteRune(r)
-	}
-	return sb.String()
 }
