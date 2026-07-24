@@ -7,6 +7,18 @@
 
 ---
 
+## 📌 Table of Contents (목차)
+- [🚀 Overview](#-overview)
+- [📖 User Manual & Keybindings (사용 설명서 & 조작법)](#-user-manual--keybindings-사용-설명서--조작법)
+  - [⌨️ Keybindings (키보드 조작 가이드)](#️-keybindings-키보드-조작-가이드)
+  - [💡 Step-by-Step User Guide (단계별 사용 가이드)](#-step-by-step-user-guide-단계별-사용-가이드)
+- [🛠️ Build & Installation Guide (빌드 및 설치 방법)](#️-build--installation-guide-빌드-및-설치-방법)
+- [📋 System Architecture Diagrams](#-system-architecture-diagrams)
+- [📄 Documentation](#-documentation)
+- [📜 License](#-license)
+
+---
+
 ## 🚀 Overview
 
 **Agentic-Init (`ainit`)**은 프로젝트의 **Initialization(초기 설계)**부터 **Release(상용 배포)**까지의 전체 개발 생애주기를 관장하는 CLI/TUI 하네스 엔지니어링 도구입니다.
@@ -158,6 +170,12 @@ flowchart TD
 - [Detailed User Manual (사용자 종합 설명서)](docs/USER_MANUAL.md)
 - [Architecture Design Specification](docs/ARCHITECTURE.md)
 - [TUI Questionnaire Form Specification](docs/QUESTIONNAIRE_SPEC.md)
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
