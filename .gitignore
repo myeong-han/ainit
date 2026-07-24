@@ -6,6 +6,9 @@ bin/
 *.so
 *.dylib
 
+# Generated GitOps artifacts
+gitops/
+
 # IDE & Editor files
 .idea/
 .vscode/
