@@ -9,10 +9,10 @@
 
 ## 📌 Table of Contents (목차)
 - [🚀 Overview](#-overview)
+- [🛠️ Makefile & Build Guide (메이크파일 빌드 및 설치 방법)](#️-makefile--build-guide-메이크파일-빌드-및-설치-방법)
 - [📖 User Manual & Keybindings (사용 설명서 & 조작법)](#-user-manual--keybindings-사용-설명서--조작법)
   - [⌨️ Keybindings (키보드 조작 가이드)](#️-keybindings-키보드-조작-가이드)
   - [💡 Step-by-Step User Guide (단계별 사용 가이드)](#-step-by-step-user-guide-단계별-사용-가이드)
-- [🛠️ Build & Installation Guide (빌드 및 설치 방법)](#️-build--installation-guide-빌드-및-설치-방법)
 - [📋 System Architecture Diagrams](#-system-architecture-diagrams)
 - [📄 Documentation](#-documentation)
 - [📜 License](#-license)
@@ -24,6 +24,37 @@
 **Agentic-Init (`ainit`)**은 프로젝트의 **Initialization(초기 설계)**부터 **Release(상용 배포)**까지의 전체 개발 생애주기를 관장하는 CLI/TUI 하네스 엔지니어링 도구입니다.
 
 - **바이너리 커맨드 명**: `ainit`
+
+---
+
+## 🛠️ Makefile & Build Guide (메이크파일 빌드 및 설치 방법)
+
+### Prerequisites (사전 요구사항)
+- **Go**: `1.21` 버전 이상 설치 필요 ([Go 설치 가이드](https://go.dev/doc/install))
+- **Make**: 표준 `make` 유틸리티
+
+### Makefile Quick Commands (메이크 커맨드)
+
+```bash
+# 1. 바이너리 빌드 (bin/ainit 생성)
+make build
+
+# 2. 빌드 및 TUI 실행
+make run
+
+# 3. 전체 단위 테스트 실행
+make test
+
+# 4. 소스코드 포맷팅 및 의존성 정리
+make fmt
+make tidy
+
+# 5. 시스템 글로벌 설치 ($GOPATH/bin/ainit)
+make install
+
+# 6. 생성된 바이너리 삭제
+make clean
+```
 
 ---
 
@@ -65,27 +96,6 @@
 #### Step 4: Release & Deployment Pipeline
 1. SemVer 기반 자동 버전 태깅 규칙을 정합니다.
 2. 배포 완료 시 Notion/Confluence 변경이력 자동 동기화 및 Slack/Discord 배포 알림 훅을 가동합니다.
-
----
-
-## 🛠️ Build & Installation Guide (빌드 및 설치 방법)
-
-### Prerequisites (사전 요구사항)
-- **Go**: `1.21` 버전 이상 설치 필요 ([Go 설치 가이드](https://go.dev/doc/install))
-
-### 1. Repository Clone & Build
-```bash
-git clone https://github.com/myeong-han/ainit.git
-cd ainit
-
-# 바이너리 빌드
-go build -o bin/ainit ./cmd/ainit
-```
-
-### 2. Run TUI (TUI 도구 실행)
-```bash
-./bin/ainit
-```
 
 ---
 
