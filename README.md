@@ -2,7 +2,6 @@
 
 > Interactive TUI Harness Engineering Tool for Project Initialization, Architecture Design, Commit/PR Conventions, and Automated Release Pipeline.
 
-[![Notion Specs](https://img.shields.io/badge/Notion-Project_Specs-blue?logo=notion)](https://app.notion.com/p/3a7267e15cd0819e84c0f23b71fd0b8c)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
@@ -12,7 +11,6 @@
 **Agentic-Init (`ainit`)**은 프로젝트의 **Initialization(초기 설계)**부터 **Release(상용 배포)**까지의 전체 개발 생애주기를 관장하는 CLI/TUI 하네스 엔지니어링 도구입니다.
 
 - **바이너리 커맨드 명**: `ainit`
-- **노션 설계서**: [project/personal/ainit](https://app.notion.com/p/3a7267e15cd0819e84c0f23b71fd0b8c)
 
 ---
 
@@ -109,7 +107,6 @@ ainit
 
 - [Architecture Design Specification](docs/ARCHITECTURE.md)
 - [TUI Questionnaire Form Specification](docs/QUESTIONNAIRE_SPEC.md)
-- [Notion Living Spec](https://app.notion.com/p/3a7267e15cd0819e84c0f23b71fd0b8c)
 
 ---
 
