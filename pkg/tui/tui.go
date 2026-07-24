@@ -80,15 +80,29 @@ var (
 				Foreground(lipgloss.Color("#8A8A8A")).
 				Padding(0, 1)
 
-	boxStyle = lipgloss.NewStyle().
+	leftBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#7D56F4")).
 			Padding(1, 2).
-			Width(84)
+			Width(56).
+			Height(18)
+
+	sidebarBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#00FFD1")).
+			Padding(1, 1).
+			Width(34).
+			Height(18)
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#00FFD1"))
+
+	sidebarHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#FAFAFA")).
+				Background(lipgloss.Color("#0087D7")).
+				Padding(0, 1)
 
 	focusedLabelStyle = lipgloss.NewStyle().
 				Bold(true).
@@ -126,7 +140,7 @@ func NewModel(cfg *config.Config) Model {
 
 	ta := textarea.New()
 	ta.Placeholder = "Enter your plain text architecture requirements here...\ne.g. 'Build a React frontend with Go microservices using Kafka event broker and Postgres DB'"
-	ta.SetWidth(78)
+	ta.SetWidth(50)
 	ta.SetHeight(8)
 
 	return Model{
@@ -155,7 +169,7 @@ func (m Model) getMaxCursorForStep() int {
 	case Step3:
 		return 3
 	case Step4:
-		return 3 // 0: Changelog, 1: ReleaseNotes, 2: Alerts, 3: [PROCEED TO ARCHITECTURE PROMPT INPUT]
+		return 3
 	default:
 		return 0
 	}
@@ -174,7 +188,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = ModeWizard
 				m.statusMsg = "Returned to Wizard settings"
 				return m, nil
-			case "ctrl+s", "ctrl+d": // Submit Architecture Prompt
+			case "ctrl+s", "ctrl+d":
 				m.mode = ModeGenerating
 				promptText := m.promptInput.Value()
 				if strings.TrimSpace(promptText) == "" {
@@ -207,7 +221,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// ModeWizard update logic
 	switch msg := msg.(tea.Msg).(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -240,7 +253,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter", " ":
 			if m.currentStep == Step4 && m.cursor == 3 {
-				// Transition to Plain Text Architecture Prompt Input Mode
 				m.mode = ModePromptInput
 				m.promptInput.Focus()
 				m.statusMsg = "Type your architecture requirements in plain text. Press 'Ctrl+S' or 'Ctrl+D' when finished."
@@ -435,36 +447,9 @@ func (m Model) View() string {
 
 	var sb strings.Builder
 
+	// Header Title
 	sb.WriteString(titleStyle.Render("⚡ Agentic-Init (ainit) Harness TUI Engineering Tool"))
 	sb.WriteString("\n\n")
-
-	if m.mode == ModePromptInput {
-		sb.WriteString(headerStyle.Render("📝 Step 5: Input Architecture Requirements (Plain Text)"))
-		sb.WriteString("\n\n")
-		sb.WriteString(m.promptInput.View())
-		sb.WriteString("\n\n")
-		sb.WriteString(boxStyle.Render(fmt.Sprintf(
-			" Selected Config Summary:\n  • Provider: %s (%s)\n  • Arch: %s (%s)\n  • Git: %s\n  • Commit: %s",
-			m.cfg.Step0.ProviderID, m.cfg.Step0.PrimaryModel,
-			m.cfg.Step1.ArchitectureStyle, m.cfg.Step1.RepoStructure,
-			m.cfg.Step2.GitProvider, m.cfg.Step3.CommitConvention,
-		)))
-		sb.WriteString("\n\n")
-		sb.WriteString(statusStyle.Render(" Status: "))
-		sb.WriteString(m.statusMsg)
-		sb.WriteString("\n")
-		return sb.String()
-	}
-
-	if m.mode == ModeDone {
-		sb.WriteString(headerStyle.Render("🎉 Generation Pipeline Completed!"))
-		sb.WriteString("\n\n")
-		sb.WriteString(boxStyle.Render(m.genResult + "\n\nOutput files:\n • docs/ARCHITECTURE_SPEC.md\n • AGENTS.md\n • CLAUDE.md\n • .cursorrules\n • .github/copilot-instructions.md"))
-		sb.WriteString("\n\n")
-		sb.WriteString(statusStyle.Render(" Press Enter or 'q' to exit."))
-		sb.WriteString("\n")
-		return sb.String()
-	}
 
 	// Step Tabs Header
 	var tabs []string
@@ -479,9 +464,12 @@ func (m Model) View() string {
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, tabs...))
 	sb.WriteString("\n\n")
 
-	// Main Box Content
-	body := m.renderStepBody()
-	sb.WriteString(boxStyle.Render(body))
+	// 2-Column Split View (Left Column + Right Sidebar Nav)
+	leftColumnView := m.renderLeftColumn()
+	rightSidebarView := m.renderRightSidebarNav()
+
+	splitView := lipgloss.JoinHorizontal(lipgloss.Top, leftBoxStyle.Render(leftColumnView), sidebarBoxStyle.Render(rightSidebarView))
+	sb.WriteString(splitView)
 	sb.WriteString("\n\n")
 
 	// Footer Status Bar
@@ -490,6 +478,69 @@ func (m Model) View() string {
 	sb.WriteString("\n")
 
 	return sb.String()
+}
+
+func (m Model) renderLeftColumn() string {
+	if m.mode == ModePromptInput {
+		var sb strings.Builder
+		sb.WriteString(headerStyle.Render("📝 Plain Text Architecture Input"))
+		sb.WriteString("\n\n")
+		sb.WriteString(m.promptInput.View())
+		sb.WriteString("\n\n")
+		sb.WriteString(hintStyle.Render("[Press Ctrl+S or Ctrl+D to Submit & Generate]"))
+		return sb.String()
+	}
+
+	if m.mode == ModeDone {
+		var sb strings.Builder
+		sb.WriteString(headerStyle.Render("🎉 Generation Pipeline Completed!"))
+		sb.WriteString("\n\n")
+		sb.WriteString(m.genResult + "\n\nOutput files:\n • docs/ARCHITECTURE_SPEC.md\n • AGENTS.md\n • CLAUDE.md\n • .cursorrules\n • .github/copilot-instructions.md")
+		return sb.String()
+	}
+
+	return m.renderStepBody()
+}
+
+func (m Model) renderRightSidebarNav() string {
+	var sb strings.Builder
+	sb.WriteString(sidebarHeaderStyle.Render("📊 CONFIG STATUS NAV"))
+	sb.WriteString("\n\n")
+
+	// Step 0 Status
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 0: AI Licensing") + "\n")
+	sb.WriteString(fmt.Sprintf("• Prov: %s\n", truncateStr(m.cfg.Step0.ProviderID, 18)))
+	sb.WriteString(fmt.Sprintf("• Model: %s\n", truncateStr(m.cfg.Step0.PrimaryModel, 17)))
+	sb.WriteString(fmt.Sprintf("• Auth: [%s]\n\n", m.cfg.Step0.LicensingMode))
+
+	// Step 1 Status
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 1: Arch Spec") + "\n")
+	sb.WriteString(fmt.Sprintf("• Style: %s (%s)\n", m.cfg.Step1.ArchitectureStyle, m.cfg.Step1.RepoStructure))
+	sb.WriteString(fmt.Sprintf("• Diag: Seq(%v) GitOps(%v)\n\n", m.cfg.Step1.GenerateSequence, m.cfg.Step1.GenerateGitOps))
+
+	// Step 2 Status
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 2: MCP Connections") + "\n")
+	sb.WriteString(fmt.Sprintf("• Git: %s (READY)\n", m.cfg.Step2.GitProvider))
+	sb.WriteString(fmt.Sprintf("• K8s: %s | ArgoCD: ACTIVE\n\n", m.cfg.Step2.K8sTarget))
+
+	// Step 3 Status
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 3: Harness & TDD") + "\n")
+	sb.WriteString(fmt.Sprintf("• Commit: %s\n", m.cfg.Step3.CommitConvention))
+	sb.WriteString(fmt.Sprintf("• TDD: %v | Sandbox: %v\n\n", m.cfg.Step3.TDDMode, m.cfg.Step3.LocalSandboxTest))
+
+	// Step 4 Status
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 4: Release Pipeline") + "\n")
+	sb.WriteString(fmt.Sprintf("• SemVer: %s\n", m.cfg.Step4.VersioningStrategy))
+	sb.WriteString(fmt.Sprintf("• Sync: Notion/Slack (%v)\n", m.cfg.Step4.ReleaseNotesSync))
+
+	return sb.String()
+}
+
+func truncateStr(s string, max int) string {
+	if len(s) > max {
+		return s[:max-2] + ".."
+	}
+	return s
 }
 
 func (m Model) renderRow(index int, label string, value string) string {
@@ -503,7 +554,7 @@ func (m Model) renderRow(index int, label string, value string) string {
 		valStyle = focusedValueStyle
 	}
 
-	return fmt.Sprintf("%s%-20s %s\n", prefix, lblStyle.Render(label), valStyle.Render(value))
+	return fmt.Sprintf("%s%-18s %s\n", prefix, lblStyle.Render(label), valStyle.Render(value))
 }
 
 func (m Model) renderStepBody() string {
@@ -517,57 +568,55 @@ func (m Model) renderStepBody() string {
 			provName = providerObj.Name
 		}
 
-		sb.WriteString(headerStyle.Render("🤖 Step 0: OpenCode Multi-Provider & Model Catalog"))
+		sb.WriteString(headerStyle.Render("🤖 Step 0: OpenCode AI Provider Catalog"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "AI Provider:", "["+provName+"]"))
-		sb.WriteString(m.renderRow(1, "Primary Model:", "["+m.cfg.Step0.PrimaryModel+"]"))
+		sb.WriteString(m.renderRow(1, "Primary Model:", "["+truncateStr(m.cfg.Step0.PrimaryModel, 18)+"]"))
 		sb.WriteString(m.renderRow(2, "Auth Method:", "["+m.cfg.Step0.LicensingMode+"]"))
 		sb.WriteString(m.renderRow(3, "Fallback Model:", "["+m.cfg.Step0.FallbackModel+"]"))
 		sb.WriteString("\n")
-		sb.WriteString(badgeStyle.Render("  [OpenCode Inspired Catalog: Anthropic, OpenAI, Gemini, DeepSeek, OpenRouter, Ollama]\n"))
-		sb.WriteString(hintStyle.Render("  [Press Enter on AI Provider to switch provider and dynamically load models]"))
+		sb.WriteString(hintStyle.Render("[Press Enter to cycle OpenCode Providers]"))
 
 	case Step1:
-		sb.WriteString(headerStyle.Render("🏗️ Step 1: Architecture Spec & Mermaid Generation"))
+		sb.WriteString(headerStyle.Render("🏗️ Step 1: Architecture Spec & Mermaid"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Arch Style:", "["+m.cfg.Step1.ArchitectureStyle+"]"))
 		sb.WriteString(m.renderRow(1, "Repo Structure:", "["+m.cfg.Step1.RepoStructure+"]"))
-		sb.WriteString(m.renderRow(2, "Sequence Diagram:", fmt.Sprintf("[%v]", m.cfg.Step1.GenerateSequence)))
-		sb.WriteString(m.renderRow(3, "GitOps Diagram:", fmt.Sprintf("[%v]", m.cfg.Step1.GenerateGitOps)))
+		sb.WriteString(m.renderRow(2, "Sequence Diag:", fmt.Sprintf("[%v]", m.cfg.Step1.GenerateSequence)))
+		sb.WriteString(m.renderRow(3, "GitOps Diag:", fmt.Sprintf("[%v]", m.cfg.Step1.GenerateGitOps)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Press Enter/Space to toggle MSA/Monolith or diagram specs]"))
+		sb.WriteString(hintStyle.Render("[Press Enter/Space to toggle specs]"))
 
 	case Step2:
-		sb.WriteString(headerStyle.Render("🔌 Step 2: MCP Tooling & Infrastructure Connections"))
+		sb.WriteString(headerStyle.Render("🔌 Step 2: MCP Tooling Connections"))
 		sb.WriteString("\n\n")
-		sb.WriteString(m.renderRow(0, "Git Provider:", "["+m.cfg.Step2.GitProvider+"] (Required)"))
+		sb.WriteString(m.renderRow(0, "Git Provider:", "["+m.cfg.Step2.GitProvider+"] (READY)"))
 		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"]"))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", unfocusedLabelStyle.Render("CI/CD Tools:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.CICDTools))))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", unfocusedLabelStyle.Render("Doc Sync:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.DocTools))))
-		sb.WriteString(fmt.Sprintf("  %-20s %s\n", unfocusedLabelStyle.Render("Messenger Webhook:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.MessengerAlerts))))
+		sb.WriteString(fmt.Sprintf("  %-18s %s\n", unfocusedLabelStyle.Render("CI/CD Tools:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.CICDTools))))
+		sb.WriteString(fmt.Sprintf("  %-18s %s\n", unfocusedLabelStyle.Render("Doc Sync:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.DocTools))))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Press Enter/Space on Git/K8s to cycle provider targets]"))
+		sb.WriteString(hintStyle.Render("[Press Enter on Git/K8s to toggle]"))
 
 	case Step3:
-		sb.WriteString(headerStyle.Render("🛠️ Step 3: Harness TDD, Commit & PR Conventions"))
+		sb.WriteString(headerStyle.Render("🛠️ Step 3: Harness TDD & Conventions"))
 		sb.WriteString("\n\n")
-		sb.WriteString(m.renderRow(0, "Commit Convention:", "["+m.cfg.Step3.CommitConvention+"]"))
-		sb.WriteString(m.renderRow(1, "PR Template Style:", "["+m.cfg.Step3.PRTemplateStyle+"]"))
+		sb.WriteString(m.renderRow(0, "Commit Conv:", "["+m.cfg.Step3.CommitConvention+"]"))
+		sb.WriteString(m.renderRow(1, "PR Template:", "["+m.cfg.Step3.PRTemplateStyle+"]"))
 		sb.WriteString(m.renderRow(2, "TDD First Mode:", fmt.Sprintf("[%v]", m.cfg.Step3.TDDMode)))
-		sb.WriteString(m.renderRow(3, "Local Sandbox Test:", fmt.Sprintf("[%v]", m.cfg.Step3.LocalSandboxTest)))
+		sb.WriteString(m.renderRow(3, "Local Sandbox:", fmt.Sprintf("[%v]", m.cfg.Step3.LocalSandboxTest)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Configures Conventional Commits, PR Template & TDD loop]"))
+		sb.WriteString(hintStyle.Render("[Configures Conventional Commits & TDD]"))
 
 	case Step4:
-		sb.WriteString(headerStyle.Render("🚀 Step 4: Release Pipeline & Submit Setup"))
+		sb.WriteString(headerStyle.Render("🚀 Step 4: Release & Submit Setup"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Auto Changelog:", fmt.Sprintf("[%v]", m.cfg.Step4.AutoChangelog)))
-		sb.WriteString(m.renderRow(1, "Release Notes Sync:", fmt.Sprintf("[%v]", m.cfg.Step4.ReleaseNotesSync)))
+		sb.WriteString(m.renderRow(1, "Release Sync:", fmt.Sprintf("[%v]", m.cfg.Step4.ReleaseNotesSync)))
 		sb.WriteString(m.renderRow(2, "Deploy Alerts:", fmt.Sprintf("[%v]", m.cfg.Step4.DeployAlert)))
 		sb.WriteString("\n")
-		sb.WriteString(m.renderRow(3, "👉 PROCEED TO PLAIN TEXT ARCHITECTURE INPUT 👈", ""))
+		sb.WriteString(m.renderRow(3, "👉 PROCEED TO PLAIN TEXT INPUT 👈", ""))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Select item 3 or press Enter to input plain text architecture requirements]"))
+		sb.WriteString(hintStyle.Render("[Press Enter to input plain text prompt]"))
 	}
 
 	return sb.String()

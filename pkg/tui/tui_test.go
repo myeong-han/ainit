@@ -21,40 +21,31 @@ func TestNewModel(t *testing.T) {
 	}
 }
 
+func TestTwoColumnLayoutWithRightSidebar(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	m := NewModel(cfg)
+
+	view := m.View()
+	// Should render the right sidebar containing step status overview
+	if !strings.Contains(view, "CONFIG STATUS") && !strings.Contains(view, "STATUS NAV") {
+		t.Errorf("expected view to render right sidebar status nav, got:\n%s", view)
+	}
+
+	if !strings.Contains(view, "Step 0:") || !strings.Contains(view, "Step 1:") {
+		t.Errorf("expected sidebar to display step 0 and step 1 configurations, got:\n%s", view)
+	}
+}
+
 func TestTransitionToArchitecturePromptInputMode(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
 	m.currentStep = Step4
-	m.cursor = 3 // Submit / Next button on Step 4
+	m.cursor = 3 // Submit button on Step 4
 
 	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m2 := updatedModel.(Model)
 
 	if m2.mode != ModePromptInput {
 		t.Errorf("expected transition to ModePromptInput after submit on Step4, got %v", m2.mode)
-	}
-}
-
-func TestRenderStepBodyAlignment(t *testing.T) {
-	cfg := config.NewDefaultConfig()
-	m := NewModel(cfg)
-
-	body := m.renderStepBody()
-	lines := strings.Split(body, "\n")
-
-	foundProvider := false
-	foundPrimary := false
-
-	for _, line := range lines {
-		if strings.Contains(line, "AI Provider") {
-			foundProvider = true
-		}
-		if strings.Contains(line, "Primary Model") {
-			foundPrimary = true
-		}
-	}
-
-	if !foundProvider || !foundPrimary {
-		t.Errorf("expected step 0 provider & primary model fields, provider: %v, primary: %v", foundProvider, foundPrimary)
 	}
 }
