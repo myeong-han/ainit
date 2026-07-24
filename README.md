@@ -23,6 +23,7 @@
 **Agentic-Init (`ainit`)**은 프로젝트의 **Initialization(초기 설계)**부터 **Release(상용 배포)**까지의 전체 개발 생애주기를 관장하는 CLI/TUI 하네스 엔지니어링 도구입니다.
 
 - **바이너리 커맨드 명**: `ainit`
+- **초기 로딩 시 기본 App Name**: `unknown` (인터랙티브 폼 또는 `/git-init <name>`으로 설정)
 
 ---
 
@@ -32,8 +33,7 @@ TUI 대화창/프롬프트 모드에서 `/`를 입력하면 드롭다운 오토�
 
 | Slash Command | Usage / Description | Example |
 | :--- | :--- | :--- |
-| **`/set-name`** | 생성할 프로젝트명 설정 (`/git-init` 및 아키텍처 명세서 기본 이름으로 활용) | `/set-name my-cool-app` |
-| **`/git-init`** | 프로젝트명을 사용해 원격 레포 존재 시 `git clone` 후 `work-dir` 업데이트, 없으면 신규 레포 초기화 | `/git-init` 또는 `/git-init myeong-han/my-app` |
+| **`/git-init`** | 프로젝트명 지정 + 원격 레포 존재 시 `git clone` 후 `work-dir` 업데이트, 없으면 신규 레포 초기화 | `/git-init my-cool-app` 또는 `/git-init myeong-han/my-app` |
 | **`/set-confs`** | TUI 설정을 CLI 인자 형태로 즉시 업데이트 | `/set-confs --name my-app --provider openai --arch msa` |
 | **`/gen-docs`** | `docs/ARCHITECTURE_SPEC.md` 아키텍처 설계서 및 4종 Mermaid 차트 즉시 생성 | `/gen-docs` |
 | **`/gen-codes`** | `AGENTS.md`, `CLAUDE.md`, `.cursorrules` 등 이종 에이전트 룰 파일 생성 | `/gen-codes` |
