@@ -28,10 +28,11 @@
 
 ## 💬 Slash Commands (슬래시 커맨드)
 
-TUI 대화창/프롬프트 모드에서 `/`로 시작하는 슬래시 커맨드를 입력하여 설정을 변경하고 제너레이션을 즉시 트리거할 수 있습니다:
+TUI 대화창/프롬프트 모드에서 `/`를 입력하면 드롭다운 오토컴플릿(Dropdown Autocomplete) 팝업이 노출되며, 다음 슬래시 커맨드를 실행할 수 있습니다:
 
 | Slash Command | Usage / Description | Example |
 | :--- | :--- | :--- |
+| **`/git-init`** | 원격 레포 존재 시 `git clone` 후 `work-dir` 업데이트, 없으면 신규 레포 초기화 | `/git-init myeong-han/ainit` |
 | **`/set-confs`** | TUI 설정을 CLI 인자 형태로 즉시 업데이트 | `/set-confs --provider openai --arch monolith --git github` |
 | **`/gen-docs`** | `docs/ARCHITECTURE_SPEC.md` 아키텍처 설계서 및 4종 Mermaid 차트 즉시 생성 | `/gen-docs` |
 | **`/gen-codes`** | `AGENTS.md`, `CLAUDE.md`, `.cursorrules` 등 이종 에이전트 룰 파일 생성 | `/gen-codes` |
