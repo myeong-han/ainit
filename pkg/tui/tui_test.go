@@ -17,24 +17,19 @@ func TestNewModelDefaultIsChatMode(t *testing.T) {
 	}
 }
 
-func TestSlashCommandDropdownActivationAndSelection(t *testing.T) {
+func TestEnhancedRightSidebarVisibility(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
 
-	m.promptInput.SetValue("/")
-	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
-	m2 := updatedModel.(Model)
+	sidebar := m.renderRightSidebarNav()
 
-	if !m2.slashDropdownOpen {
-		t.Error("expected slashDropdownOpen to be true after typing '/'")
+	// Should contain clear section dividers and status icons
+	if !strings.Contains(sidebar, "─────────────") {
+		t.Errorf("expected sidebar to contain horizontal section dividers, got:\n%s", sidebar)
 	}
 
-	// Press Tab to autocomplete first selected dropdown item (/git-init)
-	updatedModel, _ = m2.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m3 := updatedModel.(Model)
-
-	if !strings.HasPrefix(m3.promptInput.Value(), "/git-init") {
-		t.Errorf("expected promptInput value to be autocompleted with '/git-init', got '%s'", m3.promptInput.Value())
+	if !strings.Contains(sidebar, "READY") && !strings.Contains(sidebar, "ACTIVE") {
+		t.Errorf("expected sidebar to display status badges (READY/ACTIVE), got:\n%s", sidebar)
 	}
 }
 

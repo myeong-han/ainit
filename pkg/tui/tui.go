@@ -101,6 +101,24 @@ var (
 				Background(lipgloss.Color("#0087D7")).
 				Padding(0, 1)
 
+	sidebarSectionStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#00FFD1"))
+
+	sidebarKeyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#A0A0A0"))
+
+	sidebarValStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FF87D7"))
+
+	sidebarReadyStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#5AF78E")).
+				Bold(true)
+
+	sidebarDividerStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#444444"))
+
 	focusedLabelStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("#00FFD1"))
@@ -683,34 +701,46 @@ func (m Model) renderSlashDropdown(width int) string {
 func (m Model) renderRightSidebarNav() string {
 	var sb strings.Builder
 	sb.WriteString(sidebarHeaderStyle.Render("📊 CONFIG STATUS NAV"))
+	sb.WriteString("\n")
+	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────"))
 	sb.WriteString("\n\n")
 
 	projName := m.cfg.Step1.ProjectName
 	if projName == "" {
 		projName = "ainit-app"
 	}
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FAFAFA")).Render("Project: ") + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF87D7")).Render(truncateStr(projName, 16)) + "\n\n")
+	sb.WriteString(sidebarKeyStyle.Render("App Name: ") + sidebarValStyle.Render(truncateStr(projName, 14)) + "\n")
+	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
 
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 0: AI Licensing") + "\n")
-	sb.WriteString(fmt.Sprintf("• Prov: %s\n", truncateStr(m.cfg.Step0.ProviderID, 14)))
-	sb.WriteString(fmt.Sprintf("• Model: %s\n", truncateStr(m.cfg.Step0.PrimaryModel, 13)))
-	sb.WriteString(fmt.Sprintf("• Auth: [%s]\n\n", m.cfg.Step0.LicensingMode))
+	// Step 0: AI Licensing & Provider
+	sb.WriteString(sidebarSectionStyle.Render("🤖 Step 0: AI Licensing") + "\n")
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Prov :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.ProviderID, 13))))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Model:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.PrimaryModel, 13))))
+	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Auth :"), sidebarReadyStyle.Render("["+m.cfg.Step0.LicensingMode+"]")))
+	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
 
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 1: Arch Spec") + "\n")
-	sb.WriteString(fmt.Sprintf("• Style: %s (%s)\n", m.cfg.Step1.ArchitectureStyle, m.cfg.Step1.RepoStructure))
-	sb.WriteString(fmt.Sprintf("• Diag: Seq(%v) GitOps(%v)\n\n", m.cfg.Step1.GenerateSequence, m.cfg.Step1.GenerateGitOps))
+	// Step 1: Arch Spec
+	sb.WriteString(sidebarSectionStyle.Render("🏗️ Step 1: Arch Spec") + "\n")
+	sb.WriteString(fmt.Sprintf("%s %s (%s)\n", sidebarKeyStyle.Render("• Style:"), sidebarValStyle.Render(m.cfg.Step1.ArchitectureStyle), m.cfg.Step1.RepoStructure))
+	sb.WriteString(fmt.Sprintf("%s Seq(%v) GitOps(%v)\n\n", sidebarKeyStyle.Render("• Diag :"), m.cfg.Step1.GenerateSequence, m.cfg.Step1.GenerateGitOps))
+	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
 
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 2: MCP Connections") + "\n")
-	sb.WriteString(fmt.Sprintf("• Git: %s (READY)\n", m.cfg.Step2.GitProvider))
-	sb.WriteString(fmt.Sprintf("• K8s: %s | ArgoCD: ON\n\n", m.cfg.Step2.K8sTarget))
+	// Step 2: MCP Tooling
+	sb.WriteString(sidebarSectionStyle.Render("🔌 Step 2: MCP Connections") + "\n")
+	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render("🟢 READY")))
+	sb.WriteString(fmt.Sprintf("%s %s | %s\n\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(m.cfg.Step2.K8sTarget), sidebarReadyStyle.Render("ArgoCD:ON")))
+	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
 
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 3: Harness & TDD") + "\n")
-	sb.WriteString(fmt.Sprintf("• Commit: %s\n", m.cfg.Step3.CommitConvention))
-	sb.WriteString(fmt.Sprintf("• TDD: %v | Sandbox: %v\n\n", m.cfg.Step3.TDDMode, m.cfg.Step3.LocalSandboxTest))
+	// Step 3: Harness & TDD
+	sb.WriteString(sidebarSectionStyle.Render("🛠️ Step 3: Harness & TDD") + "\n")
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Commit:"), sidebarValStyle.Render(m.cfg.Step3.CommitConvention)))
+	sb.WriteString(fmt.Sprintf("%s TDD(%v) Sandbox(%v)\n\n", sidebarKeyStyle.Render("• Mode  :"), m.cfg.Step3.TDDMode, m.cfg.Step3.LocalSandboxTest))
+	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
 
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 4: Release Pipeline") + "\n")
-	sb.WriteString(fmt.Sprintf("• SemVer: %s\n", m.cfg.Step4.VersioningStrategy))
-	sb.WriteString(fmt.Sprintf("• Sync: Notion/Slack (%v)\n", m.cfg.Step4.ReleaseNotesSync))
+	// Step 4: Release Pipeline
+	sb.WriteString(sidebarSectionStyle.Render("🚀 Step 4: Release Pipeline") + "\n")
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• SemVer:"), sidebarValStyle.Render(m.cfg.Step4.VersioningStrategy)))
+	sb.WriteString(fmt.Sprintf("%s Notion/Slack (%v)\n", sidebarKeyStyle.Render("• Sync  :"), m.cfg.Step4.ReleaseNotesSync))
 
 	return sb.String()
 }
