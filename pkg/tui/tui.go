@@ -266,6 +266,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
+			// If slash command dropdown is open, handle navigation & autocomplete selection
 			if m.slashDropdownOpen {
 				switch msg.String() {
 				case "up", "k":
@@ -278,11 +279,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.slashCursor++
 					}
 					return m, nil
-				case "tab", "right":
+				case "tab", "enter", "right":
+					// Selecting a dropdown item autocompletes into chat input WITHOUT instant execution!
 					selectedCmd := m.slashOptions[m.slashCursor].Name
 					m.promptInput.SetValue(selectedCmd + " ")
 					m.slashDropdownOpen = false
-					m.statusMsg = fmt.Sprintf("Autocompleted slash command [%s]", selectedCmd)
+					m.statusMsg = fmt.Sprintf("Autocompleted '%s'. Add arguments and press Enter to execute.", selectedCmd)
 					return m, nil
 				case "esc":
 					m.slashDropdownOpen = false
@@ -297,14 +299,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "enter":
 				val := strings.TrimSpace(m.promptInput.Value())
-
-				if m.slashDropdownOpen && !strings.Contains(val, " ") {
-					selectedCmd := m.slashOptions[m.slashCursor].Name
-					val = selectedCmd
-					m.promptInput.SetValue(selectedCmd)
-					m.slashDropdownOpen = false
-				}
-
 				if val == "" {
 					return m, nil
 				}
@@ -725,7 +719,7 @@ func (m Model) renderLeftColumn(width int) string {
 		m.promptInput.SetWidth(width - 2)
 		sb.WriteString(m.promptInput.View())
 		sb.WriteString("\n\n")
-		sb.WriteString(hintStyle.Render("[Type '/' for Slash Commands Dropdown | Press Tab to select | Press Ctrl+S to Submit]"))
+		sb.WriteString(hintStyle.Render("[Type '/' for Slash Commands Dropdown | Press Enter/Tab to select & edit | Press Ctrl+S to Submit]"))
 		return sb.String()
 	}
 
@@ -742,7 +736,7 @@ func (m Model) renderLeftColumn(width int) string {
 
 func (m Model) renderSlashDropdown(width int) string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("⚡ Slash Commands (Use ↑/↓ to navigate, Tab to select):") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("⚡ Slash Commands (Use ↑/↓ to navigate, Enter/Tab to select & edit):") + "\n")
 
 	for i, opt := range m.slashOptions {
 		if i == m.slashCursor {
