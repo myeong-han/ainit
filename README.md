@@ -16,45 +16,79 @@
 
 ---
 
-## 📋 Key Features & TUI Pipeline
+## 📋 System Architecture Diagrams
 
+### 1. Overall 5-Step Pipeline Overview
 ```mermaid
-flowchart TD
-    Start([ainit CLI Launch]) --> Step0[Step 0: AI Licensing & Model Setup]
-    Step0 --> Step1[Step 1: Architecture Spec & Mermaid Diagrams]
-    Step1 --> Step2[Step 2: MCP & Infrastructure Tooling Integrations]
-    Step2 --> Step3[Step 3: Git Init, Commit/PR Convention & Harness Code]
-    Step3 --> Step4[Step 4: Release & Deployment Automation Pipeline]
+flowchart LR
+    Start([ainit CLI Launch]) --> S0[Step 0: AI Licensing]
+    S0 --> S1[Step 1: Architecture Spec]
+    S1 --> S2[Step 2: MCP Integrations]
+    S2 --> S3[Step 3: Harness Coding]
+    S3 --> S4[Step 4: Release Pipeline]
+    S4 --> End([Project Released 🎉])
 ```
 
-### 1. Step 0: AI Licensing & Model Setup
-- **Subscription (OAuth)**: OpenCode compatible Device Flow support.
-- **Direct API Keys**: Anthropic (Claude 3.5 Sonnet), OpenAI (GPT-4o), Google (Gemini Pro/Flash).
-- **Cost & Token Tracker**: Real-time token usage and cost monitoring per session.
+### 2. Step 0 & 1: AI Licensing & Architecture Spec Flow
+```mermaid
+flowchart TD
+    subgraph Step0 [Step 0: AI Licensing]
+        A[Launch ainit] --> B{Auth Method}
+        B -->|OAuth| C[Subscription Device Flow]
+        B -->|API Key| D[Direct Provider Key]
+        C --> E[LLM Provider & Fallback Setup]
+        D --> E
+    end
 
-### 2. Step 1: Architecture & Program Spec Generation (.md)
-- **Architecture Styles**: MSA (Microservices) / Modular Monolith / Event-Driven Architecture.
-- **Mermaid Diagrams**: Sequence Diagrams, Traffic Flow, Security & Auth Flow, GitOps Flow.
-- **API Spec & ERD**: OpenAPI 3.0 / AsyncAPI schemas and Mermaid ERD generation.
-- **Repo Layout**: Monorepo (pnpm/go workspace) vs Multirepo strategy.
+    subgraph Step1 [Step 1: Architecture Spec Generation]
+        E --> F[Select Arch Style: MSA / Monolith / EDA]
+        F --> G[Generate Mermaid Diagrams]
+        G --> G1[Sequence Diagram]
+        G --> G2[Traffic & Ingress Flow]
+        G --> G3[GitOps Pipeline Flow]
+        F --> H[Define API Contract & ERD Spec]
+        F --> I[Choose Layout: Monorepo vs Multirepo]
+    end
+```
 
-### 3. Step 2: MCP Connections & Tooling Management
-- **Git Provider (Required)**: GitHub & Bitbucket integration.
-- **Infrastructure (Optional)**: Kubernetes Cluster health check (`kubectl` / remote kubeconfig).
-- **CI/CD Pipeline (Optional)**: Jenkins CI & ArgoCD GitOps deployment.
-- **Container Registry (Optional)**: Harbor / GHCR / ECR / Docker Hub.
-- **Docs & Messenger (Optional)**: Notion API, Confluence, Slack Webhook, Discord Webhook.
+### 3. Step 2: MCP & Infrastructure Tooling Topology
+```mermaid
+flowchart TD
+    TUI[ainit TUI Engine] -->|Required| Git[Git Provider: GitHub / Bitbucket]
+    
+    subgraph Infrastructure [K8s & CI/CD Integrations]
+        TUI -->|Health Check| K8s[Kubernetes Cluster]
+        TUI -->|Trigger| Jenkins[Jenkins CI]
+        TUI -->|Sync| ArgoCD[ArgoCD CD]
+        TUI -->|Auth & Push| Registry[Container Registry: Harbor/GHCR/ECR]
+    end
 
-### 4. Step 3: Git Initialization & Commit/PR Conventions
-- **Agent Rules**: Auto-generation of `AGENTS.md`, `CLAUDE.md`, `.cursorrules`.
-- **Commit Conventions**: Conventional Commits, Gitmoji, Issue Key Prefixes, or Custom Patterns.
-- **PR Conventions**: Auto PR Template, Checklist generation, Auto-labeling rules.
-- **TDD & Sandbox Verification**: Local build and unit test verification prior to git commits.
+    subgraph Operations [Docs & Notifications]
+        TUI -->|Update Docs| Notion[Notion API]
+        TUI -->|Update Docs| Confluence[Confluence API]
+        TUI -->|Alert Webhook| Slack[Slack Channel]
+        TUI -->|Alert Webhook| Discord[Discord Channel]
+    end
+```
 
-### 5. Step 4: Release & Deployment Automation
-- **SemVer Versioning**: Automatic Major.Minor.Patch tagging.
-- **Auto Release Notes**: Notion & Confluence page updates upon release.
-- **Notifications**: Slack / Discord deployment alert webhooks.
+### 4. Step 3 & 4: Harness TDD Loop & Release Pipeline
+```mermaid
+flowchart TD
+    subgraph Step3 [Step 3: Harness TDD & Micro-Commit]
+        Config[Setup AGENTS.md, Commit/PR Conventions] --> WriteTest[1. Write Failing Test Spec]
+        WriteTest --> WriteCode[2. Write Minimal Code]
+        WriteCode --> Sandbox{3. Local Sandbox Build & Test}
+        Sandbox -->|Fail| WriteCode
+        Sandbox -->|Pass| HookCheck{4. Verify Commit Convention}
+        HookCheck -->|Pass| Commit[5. Atomic Git Micro-Commit]
+    end
+
+    subgraph Step4 [Step 4: Release Pipeline]
+        Commit --> SemVer[Auto SemVer Tagging]
+        SemVer --> DocsSync[Sync Release Notes to Notion/Confluence]
+        DocsSync --> Notify[Send Slack/Discord Release Alert]
+    end
+```
 
 ---
 
