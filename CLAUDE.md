@@ -3,14 +3,17 @@
 ## CLI & TUI Context
 - Binary Name: `ainit`
 - Program Name: Agentic-Init
-- Project Goal: Harness engineering TUI tool for initialization, architecture design, and release.
+- Language: Go (Golang) 1.21+
+- Frameworks: Bubble Tea (`github.com/charmbracelet/bubbletea`), Lipgloss, Bubbles
 
-## Build & Test Commands
-- Build: `go build -o bin/ainit ./cmd/ainit` (or package manager equivalent)
-- Test: `go test ./...`
-- Lint: `golangci-lint run`
+## Build & Run Commands
+- Install Dependencies: `go mod tidy`
+- Build Binary: `go build -o bin/ainit ./cmd/ainit`
+- Run Binary: `./bin/ainit`
+- Run from Source: `go run ./cmd/ainit`
+- Run Tests: `go test -v ./...`
 
-## Coding Standards
-- Follow idiomatic design for TUI components.
-- Keep dependencies minimal.
-- Use explicit error handling and status indicators in TUI.
+## Coding & Commit Standards
+- Follow TDD First (write failing test spec, then implement, then pass).
+- Atomic Micro-Commits with Conventional Commits format (`feat:`, `fix:`, `docs:`).
+- Keep dependencies minimal and idiomatic to Go.
