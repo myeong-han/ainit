@@ -12,53 +12,53 @@ func TestGetAvailableSlashCommands(t *testing.T) {
 		t.Fatal("expected non-empty list of slash commands")
 	}
 
-	foundGenGitOps := false
-	foundGenAll := false
+	foundSetName := false
 	for _, c := range cmds {
-		if c.Name == "/gen-gitops" {
-			foundGenGitOps = true
-		}
-		if c.Name == "/gen-all" {
-			foundGenAll = true
+		if c.Name == "/set-name" {
+			foundSetName = true
 		}
 	}
 
-	if !foundGenGitOps || !foundGenAll {
-		t.Errorf("expected /gen-gitops and /gen-all in available slash commands, got gitops:%v all:%v", foundGenGitOps, foundGenAll)
+	if !foundSetName {
+		t.Error("expected /set-name in available slash commands")
 	}
 }
 
-func TestSetConfsProjectNameOption(t *testing.T) {
+func TestParseAndExecuteSetName(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	cmdEngine := NewCommandEngine(cfg)
 
-	_, err := cmdEngine.Execute("/set-confs --name my-custom-service --provider openai")
+	res, err := cmdEngine.Execute("/set-name awesome-microservice")
 	if err != nil {
-		t.Fatalf("expected no error executing /set-confs with --name, got: %v", err)
+		t.Fatalf("expected no error executing /set-name, got: %v", err)
 	}
 
-	if cfg.Step1.ProjectName != "my-custom-service" {
-		t.Errorf("expected project name 'my-custom-service', got '%s'", cfg.Step1.ProjectName)
+	if cfg.Step1.ProjectName != "awesome-microservice" {
+		t.Errorf("expected project name to be 'awesome-microservice', got '%s'", cfg.Step1.ProjectName)
+	}
+
+	if res.Action != ActionSetName {
+		t.Errorf("expected action ActionSetName, got %v", res.Action)
 	}
 }
 
-func TestGenGitOpsAndGenAll(t *testing.T) {
+func TestGitInitUsesSetNameProjectName(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	cmdEngine := NewCommandEngine(cfg)
 
-	resGitOps, err := cmdEngine.Execute("/gen-gitops")
+	// First set project name via /set-name
+	_, err := cmdEngine.Execute("/set-name test-repo-service")
 	if err != nil {
-		t.Fatalf("expected no error executing /gen-gitops, got: %v", err)
-	}
-	if resGitOps.Action != ActionGenGitOps {
-		t.Errorf("expected action ActionGenGitOps, got %v", resGitOps.Action)
+		t.Fatalf("expected no error executing /set-name, got: %v", err)
 	}
 
-	resAll, err := cmdEngine.Execute("/gen-all")
+	// Then execute /git-init without positional arguments
+	res, err := cmdEngine.Execute("/git-init")
 	if err != nil {
-		t.Fatalf("expected no error executing /gen-all, got: %v", err)
+		t.Fatalf("expected no error executing /git-init, got: %v", err)
 	}
-	if resAll.Action != ActionGenAll {
-		t.Errorf("expected action ActionGenAll, got %v", resAll.Action)
+
+	if res.Action != ActionGitInit {
+		t.Errorf("expected action ActionGitInit, got %v", res.Action)
 	}
 }
