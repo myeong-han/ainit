@@ -56,19 +56,22 @@ type ChatMessage struct {
 }
 
 type Model struct {
-	cfg         *config.Config
-	cmdEngine   *command.CommandEngine
-	currentStep Step
-	cursor      int
-	mode        Mode
-	inputs      []textinput.Model
-	promptInput textarea.Model
-	chatHistory []ChatMessage
-	width       int
-	height      int
-	statusMsg   string
-	quitting    bool
-	genResult   string
+	cfg               *config.Config
+	cmdEngine         *command.CommandEngine
+	currentStep       Step
+	cursor            int
+	mode              Mode
+	inputs            []textinput.Model
+	promptInput       textarea.Model
+	chatHistory       []ChatMessage
+	slashDropdownOpen bool
+	slashCursor       int
+	slashOptions      []command.SlashOption
+	width             int
+	height            int
+	statusMsg         string
+	quitting          bool
+	genResult         string
 }
 
 var (
@@ -113,6 +116,20 @@ var (
 	unfocusedValueStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#BBBBBB"))
 
+	dropdownBoxStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("#00FFD1")).
+				Background(lipgloss.Color("#1A1A2E")).
+				Padding(0, 1)
+
+	dropdownItemFocused = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#00FFD1")).
+				Background(lipgloss.Color("#2E1A47"))
+
+	dropdownItemUnfocused = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#CCCCCC"))
+
 	userChatStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#00FFD1")).
 			Bold(true)
@@ -136,7 +153,7 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Type architecture requirements or Slash Commands (/set-confs, /gen-docs, /gen-codes, /help)..."
+	ta.Placeholder = "Type '/' for Slash Commands or enter architecture prompt..."
 	ta.SetWidth(60)
 	ta.SetHeight(4)
 	ta.Focus()
@@ -144,22 +161,25 @@ func NewModel(cfg *config.Config) Model {
 	initialHistory := []ChatMessage{
 		{
 			Sender:  "Agent",
-			Content: "Welcome to Agentic-Init (ainit)! Type your architecture requirements in plain text or use /set-confs to modify settings.",
+			Content: "Welcome to Agentic-Init (ainit)! Type '/' to trigger Slash Commands dropdown or enter plain text requirements.",
 		},
 	}
 
 	return Model{
-		cfg:         cfg,
-		cmdEngine:   command.NewCommandEngine(cfg),
-		currentStep: Step0,
-		cursor:      0,
-		mode:        ModePromptInput, // Default Main View is Chat
-		inputs:      []textinput.Model{ti},
-		promptInput: ta,
-		chatHistory: initialHistory,
-		width:       100, // Default width fallback
-		height:      28,  // Default height fallback
-		statusMsg:   "Main Chatting View | Type /set-confs to open config form | Press Ctrl+S to submit",
+		cfg:               cfg,
+		cmdEngine:         command.NewCommandEngine(cfg),
+		currentStep:       Step0,
+		cursor:            0,
+		mode:              ModePromptInput, // Default Main View is Chat
+		inputs:            []textinput.Model{ti},
+		promptInput:       ta,
+		chatHistory:       initialHistory,
+		slashDropdownOpen: false,
+		slashCursor:       0,
+		slashOptions:      command.GetAvailableSlashCommands(),
+		width:             100,
+		height:            28,
+		statusMsg:         "Main Chatting View | Type '/' for Slash Commands Dropdown | Press Ctrl+S to submit",
 	}
 }
 
@@ -193,14 +213,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.mode == ModePromptInput {
 		var cmd tea.Cmd
+
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
+			// Check if slash dropdown is currently active
+			if m.slashDropdownOpen {
+				switch msg.String() {
+				case "up", "k":
+					if m.slashCursor > 0 {
+						m.slashCursor--
+					}
+					return m, nil
+				case "down", "j":
+					if m.slashCursor < len(m.slashOptions)-1 {
+						m.slashCursor++
+					}
+					return m, nil
+				case "tab", "right":
+					// Autocomplete current selected slash command
+					selectedCmd := m.slashOptions[m.slashCursor].Name
+					m.promptInput.SetValue(selectedCmd + " ")
+					m.slashDropdownOpen = false
+					m.statusMsg = fmt.Sprintf("Autocompleted slash command [%s]", selectedCmd)
+					return m, nil
+				case "esc":
+					m.slashDropdownOpen = false
+					return m, nil
+				}
+			}
+
 			switch msg.String() {
 			case "ctrl+c":
 				m.quitting = true
 				return m, tea.Quit
+
 			case "enter":
 				val := strings.TrimSpace(m.promptInput.Value())
+
+				// If dropdown is open and user hits enter, autocomplete and execute
+				if m.slashDropdownOpen && !strings.Contains(val, " ") {
+					selectedCmd := m.slashOptions[m.slashCursor].Name
+					val = selectedCmd
+					m.promptInput.SetValue(selectedCmd)
+					m.slashDropdownOpen = false
+				}
+
 				if val == "" {
 					return m, nil
 				}
@@ -211,6 +268,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.mode = ModeWizard
 					m.statusMsg = "Switched to Config Wizard Form. Press 'Tab' to navigate steps or 'Esc' to return to Chat."
 					m.promptInput.Reset()
+					m.slashDropdownOpen = false
 					return m, nil
 				}
 
@@ -228,15 +286,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 					m.promptInput.Reset()
+					m.slashDropdownOpen = false
 					return m, nil
 				}
 
-				// Plain text message
 				m.chatHistory = append(m.chatHistory, ChatMessage{
 					Sender:  "Agent",
 					Content: fmt.Sprintf("Received architecture prompt: '%s'. Press 'Ctrl+S' to generate docs & code.", val),
 				})
 				m.promptInput.Reset()
+				m.slashDropdownOpen = false
 				return m, nil
 
 			case "ctrl+s", "ctrl+d":
@@ -259,7 +318,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+
 		m.promptInput, cmd = m.promptInput.Update(msg)
+
+		// Check if user input starts with '/' or contains '/'
+		currVal := strings.TrimSpace(m.promptInput.Value())
+		if strings.HasPrefix(currVal, "/") && !strings.Contains(currVal, " ") {
+			m.slashDropdownOpen = true
+		} else {
+			m.slashDropdownOpen = false
+		}
+
 		return m, cmd
 	}
 
@@ -505,11 +574,9 @@ func (m Model) View() string {
 
 	var sb strings.Builder
 
-	// Title
 	sb.WriteString(titleStyle.Render("⚡ Agentic-Init (ainit) Harness TUI Engineering Tool"))
 	sb.WriteString("\n\n")
 
-	// Dynamic Layout Width & Height Calculation
 	sidebarWidth := 30
 	mainWidth := m.width - sidebarWidth - 6
 	if mainWidth < 40 {
@@ -534,7 +601,6 @@ func (m Model) View() string {
 		Width(sidebarWidth).
 		Height(boxHeight)
 
-	// Step Tabs Header (Only shown when in Wizard Mode)
 	if m.mode == ModeWizard {
 		var tabs []string
 		steps := []Step{Step0, Step1, Step2, Step3, Step4}
@@ -549,7 +615,6 @@ func (m Model) View() string {
 		sb.WriteString("\n\n")
 	}
 
-	// 2-Column Responsive Layout: Left Main Flex View + Right Fixed Sidebar Nav
 	leftColumnView := m.renderLeftColumn(mainWidth - 4)
 	rightSidebarView := m.renderRightSidebarNav()
 
@@ -557,7 +622,6 @@ func (m Model) View() string {
 	sb.WriteString(splitView)
 	sb.WriteString("\n\n")
 
-	// Footer Status Bar
 	sb.WriteString(statusStyle.Render(" Status: "))
 	sb.WriteString(m.statusMsg)
 	sb.WriteString("\n")
@@ -571,7 +635,6 @@ func (m Model) renderLeftColumn(width int) string {
 		sb.WriteString(headerStyle.Render("💬 Main Architecture Chatting Session"))
 		sb.WriteString("\n\n")
 
-		// Render Chat History
 		for _, msg := range m.chatHistory {
 			if msg.Sender == "User" {
 				sb.WriteString(userChatStyle.Render("👤 User: ") + msg.Content + "\n")
@@ -581,10 +644,17 @@ func (m Model) renderLeftColumn(width int) string {
 		}
 
 		sb.WriteString("\n")
+
+		// Render Slash Command Autocomplete Dropdown if active
+		if m.slashDropdownOpen {
+			sb.WriteString(m.renderSlashDropdown(width))
+			sb.WriteString("\n")
+		}
+
 		m.promptInput.SetWidth(width - 2)
 		sb.WriteString(m.promptInput.View())
 		sb.WriteString("\n\n")
-		sb.WriteString(hintStyle.Render("[Type /set-confs for config form | Type /help for commands | Press Ctrl+S to Submit]"))
+		sb.WriteString(hintStyle.Render("[Type '/' for Slash Commands Autocomplete | Press Tab to select | Press Ctrl+S to Submit]"))
 		return sb.String()
 	}
 
@@ -597,6 +667,21 @@ func (m Model) renderLeftColumn(width int) string {
 	}
 
 	return m.renderStepBody()
+}
+
+func (m Model) renderSlashDropdown(width int) string {
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("⚡ Slash Commands (Use ↑/↓ to navigate, Tab to select):") + "\n")
+
+	for i, opt := range m.slashOptions {
+		if i == m.slashCursor {
+			sb.WriteString(dropdownItemFocused.Render(fmt.Sprintf(" ▶ %-12s - %s", opt.Name, opt.Description)) + "\n")
+		} else {
+			sb.WriteString(dropdownItemUnfocused.Render(fmt.Sprintf("   %-12s - %s", opt.Name, opt.Description)) + "\n")
+		}
+	}
+
+	return dropdownBoxStyle.Width(width - 4).Render(sb.String())
 }
 
 func (m Model) renderRightSidebarNav() string {

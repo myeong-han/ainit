@@ -24,12 +24,28 @@ type Result struct {
 	Message string
 }
 
+type SlashOption struct {
+	Name        string
+	Description string
+	Example     string
+}
+
 type CommandEngine struct {
 	cfg *config.Config
 }
 
 func NewCommandEngine(cfg *config.Config) *CommandEngine {
 	return &CommandEngine{cfg: cfg}
+}
+
+// GetAvailableSlashCommands returns the list of supported slash commands for UI autocomplete dropdown
+func GetAvailableSlashCommands() []SlashOption {
+	return []SlashOption{
+		{Name: "/set-confs", Description: "Configure AI Provider, Arch, Git & Conventions", Example: "/set-confs --provider openai --arch msa"},
+		{Name: "/gen-docs", Description: "Generate Architecture Spec & Mermaid Diagrams", Example: "/gen-docs"},
+		{Name: "/gen-codes", Description: "Generate Agent Context Rules & Scaffolding", Example: "/gen-codes"},
+		{Name: "/help", Description: "Show available Slash Commands & Usage", Example: "/help"},
+	}
 }
 
 // IsSlashCommand returns true if the input string starts with '/'
