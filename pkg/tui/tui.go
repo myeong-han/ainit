@@ -179,7 +179,7 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /gen-all, /gen-docs, /gen-codes)..."
+	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /gen-all)..."
 	ta.SetWidth(60)
 	ta.SetHeight(4)
 	ta.Focus()
@@ -187,7 +187,7 @@ func NewModel(cfg *config.Config) Model {
 	initialHistory := []ChatMessage{
 		{
 			Sender:  "Agent",
-			Content: "Welcome to Agentic-Init (ainit)! Type '/git-init <name>' to initialize your project or '/' for commands.",
+			Content: "Welcome to Agentic-Init (ainit)! Type '/git-init <name>' to set project name or '/' for commands.",
 		},
 	}
 
@@ -196,7 +196,7 @@ func NewModel(cfg *config.Config) Model {
 		cmdEngine:              command.NewCommandEngine(cfg),
 		currentStep:            Step0,
 		cursor:                 0,
-		mode:                   ModePromptInput, // Default Main View is Chat
+		mode:                   ModePromptInput,
 		inputs:                 []textinput.Model{ti},
 		promptInput:            ta,
 		chatHistory:            initialHistory,
@@ -268,12 +268,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
-			// Reset dismissal when user types a fresh '/' character
 			if msg.String() == "/" {
 				m.slashDropdownDismissed = false
 			}
 
-			// Handle keyboard navigation when dropdown is explicitly open
 			if m.slashDropdownOpen {
 				switch msg.String() {
 				case "up", "k":
@@ -290,12 +288,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					selectedCmd := m.slashOptions[m.slashCursor].Name
 					m.promptInput.SetValue(selectedCmd + " ")
 					m.slashDropdownOpen = false
-					m.slashDropdownDismissed = true // Lock dropdown from re-opening until new /
+					m.slashDropdownDismissed = true
 					m.statusMsg = fmt.Sprintf("Autocompleted '%s'. Add arguments and press Enter to execute.", selectedCmd)
 					return m, nil
 				case "esc":
 					m.slashDropdownOpen = false
-					m.slashDropdownDismissed = true // Lock dropdown from re-opening until new /
+					m.slashDropdownDismissed = true
 					m.statusMsg = "Slash commands dropdown closed."
 					return m, nil
 				}
@@ -372,7 +370,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.slashDropdownDismissed = false
 		}
 
-		// Only open dropdown if NOT dismissed, starts with '/', and does NOT contain space
 		if !m.slashDropdownDismissed && strings.HasPrefix(currVal, "/") && !strings.Contains(currVal, " ") {
 			m.slashDropdownOpen = true
 			m.slashOptions = command.GetAvailableSlashCommands()
@@ -769,47 +766,69 @@ func (m Model) renderSlashDropdown(width int) string {
 
 func (m Model) renderRightSidebarNav() string {
 	var sb strings.Builder
+	divider := sidebarDividerStyle.Render("──────────────────────")
+
 	sb.WriteString(sidebarHeaderStyle.Render("📊 CONFIG STATUS NAV"))
 	sb.WriteString("\n")
-	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────"))
+	sb.WriteString(divider)
 	sb.WriteString("\n\n")
 
 	projName := m.cfg.Step1.ProjectName
 	if projName == "" {
 		projName = "unknown"
 	}
-	sb.WriteString(sidebarKeyStyle.Render("App Name: ") + sidebarValStyle.Render(truncateStr(projName, 14)) + "\n")
-	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
+	sb.WriteString(sidebarKeyStyle.Render("App Name: ") + sidebarValStyle.Render(truncateStr(projName, 12)) + "\n")
+	sb.WriteString(divider + "\n\n")
 
 	// Step 0: AI Licensing & Provider
 	sb.WriteString(sidebarSectionStyle.Render("🤖 Step 0: AI Licensing") + "\n")
-	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Prov :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.ProviderID, 13))))
-	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Model:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.PrimaryModel, 13))))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Prov :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.ProviderID, 11))))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Model:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.PrimaryModel, 11))))
 	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Auth :"), sidebarReadyStyle.Render("["+m.cfg.Step0.LicensingMode+"]")))
-	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
+	sb.WriteString(divider + "\n\n")
 
 	// Step 1: Arch Spec
+	seqStr := "N"
+	if m.cfg.Step1.GenerateSequence {
+		seqStr = "Y"
+	}
+	gitopsStr := "N"
+	if m.cfg.Step1.GenerateGitOps {
+		gitopsStr = "Y"
+	}
 	sb.WriteString(sidebarSectionStyle.Render("🏗️ Step 1: Arch Spec") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s (%s)\n", sidebarKeyStyle.Render("• Style:"), sidebarValStyle.Render(m.cfg.Step1.ArchitectureStyle), m.cfg.Step1.RepoStructure))
-	sb.WriteString(fmt.Sprintf("%s Seq(%v) GitOps(%v)\n\n", sidebarKeyStyle.Render("• Diag :"), m.cfg.Step1.GenerateSequence, m.cfg.Step1.GenerateGitOps))
-	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
+	sb.WriteString(fmt.Sprintf("%s Seq(%s) Git(%s)\n\n", sidebarKeyStyle.Render("• Diag :"), seqStr, gitopsStr))
+	sb.WriteString(divider + "\n\n")
 
 	// Step 2: MCP Tooling
 	sb.WriteString(sidebarSectionStyle.Render("🔌 Step 2: MCP Connections") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render("🟢 READY")))
 	sb.WriteString(fmt.Sprintf("%s %s | %s\n\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(m.cfg.Step2.K8sTarget), sidebarReadyStyle.Render("ArgoCD:ON")))
-	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
+	sb.WriteString(divider + "\n\n")
 
 	// Step 3: Harness & TDD
+	tddStr := "N"
+	if m.cfg.Step3.TDDMode {
+		tddStr = "Y"
+	}
+	sbStr := "N"
+	if m.cfg.Step3.LocalSandboxTest {
+		sbStr = "Y"
+	}
 	sb.WriteString(sidebarSectionStyle.Render("🛠️ Step 3: Harness & TDD") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Commit:"), sidebarValStyle.Render(m.cfg.Step3.CommitConvention)))
-	sb.WriteString(fmt.Sprintf("%s TDD(%v) Sandbox(%v)\n\n", sidebarKeyStyle.Render("• Mode  :"), m.cfg.Step3.TDDMode, m.cfg.Step3.LocalSandboxTest))
-	sb.WriteString(sidebarDividerStyle.Render("─────────────────────────────") + "\n\n")
+	sb.WriteString(fmt.Sprintf("%s TDD(%s) Sbox(%s)\n\n", sidebarKeyStyle.Render("• Mode  :"), tddStr, sbStr))
+	sb.WriteString(divider + "\n\n")
 
 	// Step 4: Release Pipeline
+	syncStr := "N"
+	if m.cfg.Step4.ReleaseNotesSync {
+		syncStr = "Y"
+	}
 	sb.WriteString(sidebarSectionStyle.Render("🚀 Step 4: Release Pipeline") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• SemVer:"), sidebarValStyle.Render(m.cfg.Step4.VersioningStrategy)))
-	sb.WriteString(fmt.Sprintf("%s Notion/Slack (%v)\n", sidebarKeyStyle.Render("• Sync  :"), m.cfg.Step4.ReleaseNotesSync))
+	sb.WriteString(fmt.Sprintf("%s Sync(%s)\n", sidebarKeyStyle.Render("• Slack :"), syncStr))
 
 	return sb.String()
 }
