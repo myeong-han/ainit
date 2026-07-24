@@ -1,0 +1,8 @@
+# Windsurf Rules Configuration
+
+# Refer to AGENTS.md for all project execution rules, TDD loops, and commit conventions.
+# AGENTS.md is the Single Source of Truth for this codebase.
+
+- Always read AGENTS.md before making any code modifications.
+- Execute unit tests (make test) before finalizing any changes.
+- All commits must follow Conventional Commits and atomic micro-commit principles.
