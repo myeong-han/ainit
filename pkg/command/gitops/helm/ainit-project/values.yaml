@@ -1,0 +1,16 @@
+replicaCount: 2
+image:
+  repository: harbor.local/ainit-project
+  pullPolicy: IfNotPresent
+  tag: "latest"
+service:
+  type: ClusterIP
+  port: 8080
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: ainit-project.local
+      paths:
+        - path: /
+          pathType: Prefix

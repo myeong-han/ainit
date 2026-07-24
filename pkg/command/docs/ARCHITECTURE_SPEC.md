@@ -7,7 +7,7 @@
 **Repository Structure**: monorepo
 
 ### Plain Text Architecture Prompt Requirements
-> Architecture Spec & Mermaid diagrams generated via /gen-docs slash command
+> Sequential generation triggered via /gen-all
 
 ---
 

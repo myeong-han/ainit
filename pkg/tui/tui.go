@@ -153,7 +153,7 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Type '/' for Slash Commands or enter architecture prompt..."
+	ta.Placeholder = "Type '/' for Slash Commands (/gen-all, /gen-docs, /gen-codes, /gen-gitops, /set-confs)..."
 	ta.SetWidth(60)
 	ta.SetHeight(4)
 	ta.Focus()
@@ -161,7 +161,7 @@ func NewModel(cfg *config.Config) Model {
 	initialHistory := []ChatMessage{
 		{
 			Sender:  "Agent",
-			Content: "Welcome to Agentic-Init (ainit)! Type '/' to trigger Slash Commands dropdown or enter plain text requirements.",
+			Content: "Welcome to Agentic-Init (ainit)! Type '/' for Slash Commands (/gen-all, /set-confs --name) or enter plain text requirements.",
 		},
 	}
 
@@ -216,7 +216,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg := msg.(tea.Msg).(type) {
 		case tea.KeyMsg:
-			// Check if slash dropdown is currently active
 			if m.slashDropdownOpen {
 				switch msg.String() {
 				case "up", "k":
@@ -230,7 +229,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				case "tab", "right":
-					// Autocomplete current selected slash command
 					selectedCmd := m.slashOptions[m.slashCursor].Name
 					m.promptInput.SetValue(selectedCmd + " ")
 					m.slashDropdownOpen = false
@@ -250,7 +248,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				val := strings.TrimSpace(m.promptInput.Value())
 
-				// If dropdown is open and user hits enter, autocomplete and execute
 				if m.slashDropdownOpen && !strings.Contains(val, " ") {
 					selectedCmd := m.slashOptions[m.slashCursor].Name
 					val = selectedCmd
@@ -280,7 +277,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: res.Message})
 						m.statusMsg = res.Message
-						if res.Action == command.ActionGenDocs || res.Action == command.ActionGenCodes {
+						if res.Action == command.ActionGenDocs || res.Action == command.ActionGenCodes || res.Action == command.ActionGenGitOps || res.Action == command.ActionGenAll {
 							m.mode = ModeDone
 							m.genResult = res.Message
 						}
@@ -308,11 +305,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					promptText = "Default MSA architecture with Go backend & React frontend"
 				}
 
-				err := generator.GenerateHarnessProject(".", m.cfg, promptText)
+				err := generator.GenerateAll(".", m.cfg, promptText)
 				if err != nil {
 					m.genResult = fmt.Sprintf("❌ Error generating project: %v", err)
 				} else {
-					m.genResult = "🎉 Architecture Spec, Mermaid Diagrams, Git & Agent Rules Generated Successfully!"
+					m.genResult = "🎉 Architecture Spec, Mermaid Diagrams, GitOps Manifests & Agent Rules Generated Successfully!"
 				}
 				m.mode = ModeDone
 				return m, nil
@@ -321,10 +318,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.promptInput, cmd = m.promptInput.Update(msg)
 
-		// Check if user input starts with '/' or contains '/'
 		currVal := strings.TrimSpace(m.promptInput.Value())
 		if strings.HasPrefix(currVal, "/") && !strings.Contains(currVal, " ") {
 			m.slashDropdownOpen = true
+			m.slashOptions = command.GetAvailableSlashCommands()
 		} else {
 			m.slashDropdownOpen = false
 		}
@@ -645,7 +642,6 @@ func (m Model) renderLeftColumn(width int) string {
 
 		sb.WriteString("\n")
 
-		// Render Slash Command Autocomplete Dropdown if active
 		if m.slashDropdownOpen {
 			sb.WriteString(m.renderSlashDropdown(width))
 			sb.WriteString("\n")
@@ -654,7 +650,7 @@ func (m Model) renderLeftColumn(width int) string {
 		m.promptInput.SetWidth(width - 2)
 		sb.WriteString(m.promptInput.View())
 		sb.WriteString("\n\n")
-		sb.WriteString(hintStyle.Render("[Type '/' for Slash Commands Autocomplete | Press Tab to select | Press Ctrl+S to Submit]"))
+		sb.WriteString(hintStyle.Render("[Type '/' for Slash Commands Dropdown | Press Tab to select | Press Ctrl+S to Submit]"))
 		return sb.String()
 	}
 
@@ -662,7 +658,7 @@ func (m Model) renderLeftColumn(width int) string {
 		var sb strings.Builder
 		sb.WriteString(headerStyle.Render("🎉 Generation Pipeline Completed!"))
 		sb.WriteString("\n\n")
-		sb.WriteString(m.genResult + "\n\nOutput files:\n • docs/ARCHITECTURE_SPEC.md\n • AGENTS.md\n • CLAUDE.md\n • .cursorrules\n • .github/copilot-instructions.md")
+		sb.WriteString(m.genResult + "\n\nOutput files:\n • docs/ARCHITECTURE_SPEC.md\n • gitops/helm & gitops/argocd\n • AGENTS.md & CLAUDE.md")
 		return sb.String()
 	}
 
@@ -688,6 +684,12 @@ func (m Model) renderRightSidebarNav() string {
 	var sb strings.Builder
 	sb.WriteString(sidebarHeaderStyle.Render("📊 CONFIG STATUS NAV"))
 	sb.WriteString("\n\n")
+
+	projName := m.cfg.Step1.ProjectName
+	if projName == "" {
+		projName = "ainit-app"
+	}
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FAFAFA")).Render("Project: ") + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF87D7")).Render(truncateStr(projName, 16)) + "\n\n")
 
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Step 0: AI Licensing") + "\n")
 	sb.WriteString(fmt.Sprintf("• Prov: %s\n", truncateStr(m.cfg.Step0.ProviderID, 14)))

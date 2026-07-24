@@ -1,13 +1,13 @@
 # ainit-project Architecture Specification
 
 ## 1. Overview & Requirements
-**AI Provider**: openai (apikey)
-**Primary Model**: gpt-4o
+**AI Provider**: anthropic (subscription)
+**Primary Model**: claude-3-5-sonnet-20241022
 **Architecture Style**: MSA
 **Repository Structure**: monorepo
 
 ### Plain Text Architecture Prompt Requirements
-> Architecture Spec & Mermaid diagrams generated via /gen-docs slash command
+> Received architecture prompt: '아하'. Press 'Ctrl+S' to generate docs & code.
 
 ---
 

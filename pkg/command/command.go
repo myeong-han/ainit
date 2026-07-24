@@ -18,6 +18,8 @@ const (
 	ActionSetConfs
 	ActionGenDocs
 	ActionGenCodes
+	ActionGenGitOps
+	ActionGenAll
 	ActionGitInit
 	ActionHelp
 )
@@ -45,9 +47,11 @@ func NewCommandEngine(cfg *config.Config) *CommandEngine {
 func GetAvailableSlashCommands() []SlashOption {
 	return []SlashOption{
 		{Name: "/git-init", Description: "Clone existing repo or initialize new git repository & update work-dir", Example: "/git-init myeong-han/ainit"},
-		{Name: "/set-confs", Description: "Configure AI Provider, Arch, Git & Conventions", Example: "/set-confs --provider openai --arch msa"},
+		{Name: "/set-confs", Description: "Configure Name, AI Provider, Arch, Git & Conventions", Example: "/set-confs --name my-app --provider openai"},
 		{Name: "/gen-docs", Description: "Generate Architecture Spec & Mermaid Diagrams", Example: "/gen-docs"},
 		{Name: "/gen-codes", Description: "Generate Agent Context Rules & Scaffolding", Example: "/gen-codes"},
+		{Name: "/gen-gitops", Description: "Generate K8s, Helm Charts & ArgoCD GitOps Manifests", Example: "/gen-gitops"},
+		{Name: "/gen-all", Description: "Sequentially execute /gen-docs, /gen-codes & /gen-gitops", Example: "/gen-all"},
 		{Name: "/help", Description: "Show available Slash Commands & Usage", Example: "/help"},
 	}
 }
@@ -76,6 +80,10 @@ func (e *CommandEngine) Execute(input string) (*Result, error) {
 		return e.handleGenDocs()
 	case "/gen-codes":
 		return e.handleGenCodes()
+	case "/gen-gitops":
+		return e.handleGenGitOps()
+	case "/gen-all":
+		return e.handleGenAll()
 	case "/help":
 		return e.handleHelp()
 	default:
@@ -124,6 +132,9 @@ func (e *CommandEngine) handleSetConfs(args []string) (*Result, error) {
 			i++
 
 			switch key {
+			case "name", "project":
+				e.cfg.Step1.ProjectName = val
+				updated = append(updated, "name="+val)
 			case "provider":
 				e.cfg.Step0.ProviderID = val
 				updated = append(updated, "provider="+val)
@@ -151,7 +162,7 @@ func (e *CommandEngine) handleSetConfs(args []string) (*Result, error) {
 
 	msg := "Updated configs: " + strings.Join(updated, ", ")
 	if len(updated) == 0 {
-		msg = "No configs specified. Usage: /set-confs --provider anthropic --arch msa --git github --commit conventional"
+		msg = "No configs specified. Usage: /set-confs --name my-app --provider anthropic --arch msa --git github"
 	}
 
 	return &Result{
@@ -184,13 +195,39 @@ func (e *CommandEngine) handleGenCodes() (*Result, error) {
 	}, nil
 }
 
+func (e *CommandEngine) handleGenGitOps() (*Result, error) {
+	err := generator.GenerateGitOpsManifests(".", e.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate GitOps manifests: %v", err)
+	}
+
+	return &Result{
+		Action:  ActionGenGitOps,
+		Message: "☸️ Successfully generated GitOps manifests: Helm Chart & ArgoCD Application YAML in gitops/",
+	}, nil
+}
+
+func (e *CommandEngine) handleGenAll() (*Result, error) {
+	err := generator.GenerateAll(".", e.cfg, "Sequential generation triggered via /gen-all")
+	if err != nil {
+		return nil, fmt.Errorf("failed during /gen-all pipeline: %v", err)
+	}
+
+	return &Result{
+		Action:  ActionGenAll,
+		Message: "🚀 Sequential /gen-all pipeline complete! Generated /gen-docs, /gen-codes, and /gen-gitops successfully!",
+	}, nil
+}
+
 func (e *CommandEngine) handleHelp() (*Result, error) {
 	helpMsg := `Available Slash Commands:
 • /git-init [owner/repo] : Clone existing repo or initialize new git repository & update work-dir
-• /set-confs --provider <id> --arch <msa|monolith> --git <github|bitbucket> --commit <conventional|gitmoji>
-• /gen-docs  : Generate docs/ARCHITECTURE_SPEC.md & 4 Mermaid diagrams
-• /gen-codes : Generate AGENTS.md, CLAUDE.md & cross-agent context rules
-• /help      : Show available slash commands`
+• /set-confs --name <app> --provider <id> --arch <msa|monolith> --git <github|bitbucket>
+• /gen-docs   : Generate docs/ARCHITECTURE_SPEC.md & 4 Mermaid diagrams
+• /gen-codes  : Generate AGENTS.md, CLAUDE.md & cross-agent context rules
+• /gen-gitops : Generate Helm Charts & ArgoCD GitOps Application manifests
+• /gen-all    : Sequentially execute /gen-docs, /gen-codes & /gen-gitops
+• /help       : Show available slash commands`
 
 	return &Result{
 		Action:  ActionHelp,
