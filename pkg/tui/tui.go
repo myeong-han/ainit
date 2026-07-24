@@ -8,12 +8,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/myeong-han/ainit/pkg/config"
+	"github.com/myeong-han/ainit/pkg/provider"
 )
 
 type Step int
 
 const (
-	Step0 Step = iota // AI Licensing
+	Step0 Step = iota // AI Licensing & Provider
 	Step1             // Architecture Spec
 	Step2             // MCP Tooling
 	Step3             // Harness TDD & Conventions
@@ -69,7 +70,7 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#7D56F4")).
 			Padding(1, 2).
-			Width(78)
+			Width(82)
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -89,6 +90,10 @@ var (
 
 	unfocusedValueStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#BBBBBB"))
+
+	badgeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#00FFD1")).
+			Italic(true)
 
 	hintStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262")).
@@ -110,7 +115,7 @@ func NewModel(cfg *config.Config) Model {
 		currentStep: Step0,
 		cursor:      0,
 		inputs:      []textinput.Model{ti},
-		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate fields | 'Enter/Space' to toggle",
+		statusMsg:   "Press 'Tab' / '←/→' to switch steps | '↑/↓' to navigate | 'Enter/Space' to cycle OpenCode providers",
 	}
 }
 
@@ -121,7 +126,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) getMaxCursorForStep() int {
 	switch m.currentStep {
 	case Step0:
-		return 2 // LicensingMode, PrimaryModel, FallbackModel
+		return 3 // ProviderID, PrimaryModel, LicensingMode, FallbackModel
 	case Step1:
 		return 3 // ArchStyle, RepoStructure, SequenceDiagram, GitOpsDiagram
 	case Step2:
@@ -181,8 +186,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) toggleCurrentField() {
 	switch m.currentStep {
 	case Step0:
+		providers := provider.GetAvailableProviders()
 		switch m.cursor {
-		case 0: // LicensingMode
+		case 0: // AI Provider Selection
+			currIdx := -1
+			for i, p := range providers {
+				if p.ID == m.cfg.Step0.ProviderID {
+					currIdx = i
+					break
+				}
+			}
+			nextIdx := (currIdx + 1) % len(providers)
+			nextProvider := providers[nextIdx]
+			m.cfg.Step0.ProviderID = nextProvider.ID
+			m.cfg.Step0.LicensingMode = nextProvider.DefaultAuth
+			if len(nextProvider.Models) > 0 {
+				m.cfg.Step0.PrimaryModel = nextProvider.Models[0].ID
+			}
+			m.statusMsg = fmt.Sprintf("Switched AI Provider to [%s] (%s)", nextProvider.Name, nextProvider.DefaultAuth)
+
+		case 1: // Primary Model Selection (Cascading from selected Provider)
+			models := provider.GetModelsForProvider(m.cfg.Step0.ProviderID)
+			if len(models) > 0 {
+				currIdx := -1
+				for i, mod := range models {
+					if mod.ID == m.cfg.Step0.PrimaryModel {
+						currIdx = i
+						break
+					}
+				}
+				nextIdx := (currIdx + 1) % len(models)
+				m.cfg.Step0.PrimaryModel = models[nextIdx].ID
+				m.statusMsg = fmt.Sprintf("Selected Primary Model: [%s] (Context: %dK)", models[nextIdx].Name, models[nextIdx].ContextWindow/1000)
+			}
+
+		case 2: // Licensing Auth Mode
 			switch m.cfg.Step0.LicensingMode {
 			case "subscription":
 				m.cfg.Step0.LicensingMode = "apikey"
@@ -191,29 +229,20 @@ func (m *Model) toggleCurrentField() {
 			default:
 				m.cfg.Step0.LicensingMode = "subscription"
 			}
-			m.statusMsg = fmt.Sprintf("Changed Licensing Mode to [%s]", m.cfg.Step0.LicensingMode)
+			m.statusMsg = fmt.Sprintf("Auth Mode changed to [%s]", m.cfg.Step0.LicensingMode)
 
-		case 1: // PrimaryModel
-			switch m.cfg.Step0.PrimaryModel {
-			case "claude-3-5-sonnet":
-				m.cfg.Step0.PrimaryModel = "gpt-4o"
-			case "gpt-4o":
-				m.cfg.Step0.PrimaryModel = "gemini-1.5-pro"
-			default:
-				m.cfg.Step0.PrimaryModel = "claude-3-5-sonnet"
-			}
-			m.statusMsg = fmt.Sprintf("Selected Primary Model: [%s]", m.cfg.Step0.PrimaryModel)
-
-		case 2: // FallbackModel
+		case 3: // Fallback Model Selection
 			switch m.cfg.Step0.FallbackModel {
 			case "gpt-4o-mini":
 				m.cfg.Step0.FallbackModel = "claude-3-5-haiku"
 			case "claude-3-5-haiku":
+				m.cfg.Step0.FallbackModel = "gemini-1.5-flash"
+			case "gemini-1.5-flash":
 				m.cfg.Step0.FallbackModel = "none"
 			default:
 				m.cfg.Step0.FallbackModel = "gpt-4o-mini"
 			}
-			m.statusMsg = fmt.Sprintf("Selected Fallback Model: [%s]", m.cfg.Step0.FallbackModel)
+			m.statusMsg = fmt.Sprintf("Fallback Model set to [%s]", m.cfg.Step0.FallbackModel)
 		}
 
 	case Step1:
@@ -376,13 +405,21 @@ func (m Model) renderStepBody() string {
 
 	switch m.currentStep {
 	case Step0:
-		sb.WriteString(headerStyle.Render("🤖 Step 0: AI Licensing & Model Setup"))
+		providerObj := provider.GetProviderByID(m.cfg.Step0.ProviderID)
+		provName := m.cfg.Step0.ProviderID
+		if providerObj != nil {
+			provName = providerObj.Name
+		}
+
+		sb.WriteString(headerStyle.Render("🤖 Step 0: OpenCode Multi-Provider & Model Catalog"))
 		sb.WriteString("\n\n")
-		sb.WriteString(m.renderRow(0, "Licensing Mode:", "["+m.cfg.Step0.LicensingMode+"]"))
+		sb.WriteString(m.renderRow(0, "AI Provider:", "["+provName+"]"))
 		sb.WriteString(m.renderRow(1, "Primary Model:", "["+m.cfg.Step0.PrimaryModel+"]"))
-		sb.WriteString(m.renderRow(2, "Fallback Model:", "["+m.cfg.Step0.FallbackModel+"]"))
+		sb.WriteString(m.renderRow(2, "Auth Method:", "["+m.cfg.Step0.LicensingMode+"]"))
+		sb.WriteString(m.renderRow(3, "Fallback Model:", "["+m.cfg.Step0.FallbackModel+"]"))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("  [Use ↑/↓ to navigate fields | Press Enter/Space to cycle options]"))
+		sb.WriteString(badgeStyle.Render("  [OpenCode Inspired Catalog: Anthropic, OpenAI, Gemini, DeepSeek, OpenRouter, Ollama]\n"))
+		sb.WriteString(hintStyle.Render("  [Press Enter on AI Provider to switch provider and dynamically load models]"))
 
 	case Step1:
 		sb.WriteString(headerStyle.Render("🏗️ Step 1: Architecture Spec & Mermaid Generation"))

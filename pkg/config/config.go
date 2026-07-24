@@ -5,12 +5,15 @@ import (
 	"strings"
 )
 
-// Step0Config defines AI Licensing and LLM setup
+// Step0Config defines AI Licensing and OpenCode-compatible Provider/Model setup
 type Step0Config struct {
-	LicensingMode string // "subscription", "apikey", "local"
-	PrimaryModel  string // "claude-3-5-sonnet", "gpt-4o", "gemini-1.5-pro"
-	FallbackModel string // "gpt-4o-mini", "claude-3-5-haiku"
-	APIKey        string
+	LicensingMode    string // "subscription" (oauth), "apikey", "local"
+	ProviderID       string // "anthropic", "openai", "google", "deepseek", "openrouter", "ollama"
+	PrimaryModel     string // e.g. "claude-3-5-sonnet-20241022"
+	FallbackProvider string // e.g. "openai"
+	FallbackModel    string // e.g. "gpt-4o-mini"
+	APIKey           string
+	BaseURL          string // e.g. "http://localhost:11434"
 }
 
 // Step1Config defines Architecture & Specification setup
@@ -64,9 +67,12 @@ type Config struct {
 func NewDefaultConfig() *Config {
 	return &Config{
 		Step0: Step0Config{
-			LicensingMode: "subscription",
-			PrimaryModel:  "claude-3-5-sonnet",
-			FallbackModel: "gpt-4o-mini",
+			LicensingMode:    "subscription",
+			ProviderID:       "anthropic",
+			PrimaryModel:     "claude-3-5-sonnet-20241022",
+			FallbackProvider: "openai",
+			FallbackModel:    "gpt-4o-mini",
+			BaseURL:          "http://localhost:11434",
 		},
 		Step1: Step1Config{
 			ProjectName:       "ainit-project",

@@ -7,6 +7,10 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := NewDefaultConfig()
 
+	if cfg.Step0.ProviderID != "anthropic" {
+		t.Errorf("expected default provider 'anthropic', got '%s'", cfg.Step0.ProviderID)
+	}
+
 	if cfg.Step0.LicensingMode != "subscription" {
 		t.Errorf("expected default licensing mode 'subscription', got '%s'", cfg.Step0.LicensingMode)
 	}
