@@ -1,111 +1,202 @@
 package provider
 
-// ModelSpec defines detailed capability specs for an LLM model (OpenCode compatible)
-type ModelSpec struct {
-	ID            string
-	Name          string
-	ContextWindow int    // e.g. 128000, 200000, 2000000
-	MaxOutput     int    // e.g. 4096, 8192, 16384
-	Description   string // e.g. "Most intelligent model", "Low latency"
-	SupportsImages bool
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type ModelInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
-// ProviderSpec defines LLM provider credentials and available model catalog
-type ProviderSpec struct {
-	ID             string
-	Name           string
-	DefaultAuth    string // "oauth", "apikey", "local"
-	RequiresURL    bool   // true for Ollama / Custom Endpoints
-	DefaultBaseURL string
-	Models         []ModelSpec
+type ProviderInfo struct {
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	DefaultAuth string      `json:"default_auth"`
+	Models      []ModelInfo `json:"models"`
 }
 
-// Catalog holds all supported LLM Providers and Models inspired by OpenCode
-var catalog = []ProviderSpec{
-	{
-		ID:          "anthropic",
-		Name:        "Anthropic",
-		DefaultAuth: "oauth",
-		Models: []ModelSpec{
-			{ID: "claude-3-5-sonnet-20241022", Name: "Claude 3.5 Sonnet", ContextWindow: 200000, MaxOutput: 8192, Description: "State-of-the-art coding & reasoning", SupportsImages: true},
-			{ID: "claude-3-5-haiku", Name: "Claude 3.5 Haiku", ContextWindow: 200000, MaxOutput: 8192, Description: "Lightning fast responses", SupportsImages: false},
-			{ID: "claude-3-opus-20240229", Name: "Claude 3 Opus", ContextWindow: 200000, MaxOutput: 4096, Description: "Complex analytical tasks", SupportsImages: true},
+// GetAvailableProviders returns the list of supported OpenCode AI Providers with updated model catalogs
+func GetAvailableProviders() []ProviderInfo {
+	return []ProviderInfo{
+		{
+			ID:          "anthropic",
+			Name:        "Anthropic Claude",
+			Description: "Advanced reasoning & agentic capabilities",
+			DefaultAuth: "subscription",
+			Models: []ModelInfo{
+				{ID: "claude-3-7-sonnet", Name: "Claude 3.7 Sonnet (Latest)", Description: "Flagship hybrid reasoning model"},
+				{ID: "claude-3-5-sonnet-20241022", Name: "Claude 3.5 Sonnet v2", Description: "High-precision code & architecture"},
+				{ID: "claude-3-5-haiku-20241022", Name: "Claude 3.5 Haiku", Description: "Ultra-fast lightweight model"},
+			},
 		},
-	},
-	{
-		ID:          "openai",
-		Name:        "OpenAI",
-		DefaultAuth: "apikey",
-		Models: []ModelSpec{
-			{ID: "gpt-4o", Name: "GPT-4o", ContextWindow: 128000, MaxOutput: 16384, Description: "Flagship high-intelligence model", SupportsImages: true},
-			{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ContextWindow: 128000, MaxOutput: 16384, Description: "Affordable fast model", SupportsImages: true},
-			{ID: "o3-mini", Name: "o3-mini", ContextWindow: 200000, MaxOutput: 100000, Description: "STEM & coding reasoning model", SupportsImages: false},
-			{ID: "o1", Name: "o1", ContextWindow: 200000, MaxOutput: 100000, Description: "Deep reasoning model", SupportsImages: true},
+		{
+			ID:          "openai",
+			Name:        "OpenAI GPT",
+			Description: "State-of-the-art multi-modal models",
+			DefaultAuth: "apikey",
+			Models: []ModelInfo{
+				{ID: "gpt-4o", Name: "GPT-4o (Omni)", Description: "Versatile flagship model"},
+				{ID: "gpt-4o-mini", Name: "GPT-4o Mini", Description: "Fast & cost-effective lightweight model"},
+				{ID: "o3-mini", Name: "o3-mini (Reasoning)", Description: "Next-gen reasoning engine"},
+				{ID: "o1", Name: "o1 (Deep Thought)", Description: "Complex math & algorithm synthesis"},
+			},
 		},
-	},
-	{
-		ID:          "google",
-		Name:        "Google Gemini",
-		DefaultAuth: "apikey",
-		Models: []ModelSpec{
-			{ID: "gemini-1.5-pro", Name: "Gemini 1.5 Pro", ContextWindow: 2000000, MaxOutput: 8192, Description: "2M massive context window", SupportsImages: true},
-			{ID: "gemini-1.5-flash", Name: "Gemini 1.5 Flash", ContextWindow: 1000000, MaxOutput: 8192, Description: "High speed multimodal model", SupportsImages: true},
-			{ID: "gemini-2.0-flash-exp", Name: "Gemini 2.0 Flash Exp", ContextWindow: 1000000, MaxOutput: 8192, Description: "Next-gen experimental model", SupportsImages: true},
+		{
+			ID:          "gemini",
+			Name:        "Google Gemini",
+			Description: "Long-context & high-speed multi-modal models",
+			DefaultAuth: "apikey",
+			Models: []ModelInfo{
+				{ID: "gemini-2.0-flash", Name: "Gemini 2.0 Flash (Latest)", Description: "Next-gen real-time speed model"},
+				{ID: "gemini-2.0-pro-exp", Name: "Gemini 2.0 Pro Experimental", Description: "Deep reasoning & architecture analysis"},
+				{ID: "gemini-1.5-pro", Name: "Gemini 1.5 Pro", Description: "2M Token massive context window"},
+			},
 		},
-	},
-	{
-		ID:          "deepseek",
-		Name:        "DeepSeek",
-		DefaultAuth: "apikey",
-		Models: []ModelSpec{
-			{ID: "deepseek-chat", Name: "DeepSeek V3 (Chat)", ContextWindow: 64000, MaxOutput: 8192, Description: "High performance open weights", SupportsImages: false},
-			{ID: "deepseek-reasoner", Name: "DeepSeek R1 (Reasoner)", ContextWindow: 64000, MaxOutput: 8192, Description: "Open reasoning model", SupportsImages: false},
+		{
+			ID:          "ollama",
+			Name:        "Ollama (Local / Open-Source)",
+			Description: "On-premise zero-data leakage local LLMs",
+			DefaultAuth: "local",
+			Models: []ModelInfo{
+				{ID: "llama3.3:70b", Name: "Llama 3.3 70B", Description: "Local open-weights flagship"},
+				{ID: "qwen2.5-coder:32b", Name: "Qwen 2.5 Coder 32B", Description: "Specialized local code assistant"},
+				{ID: "deepseek-r1:32b", Name: "DeepSeek R1 32B", Description: "Local open-reasoning model"},
+			},
 		},
-	},
-	{
-		ID:          "openrouter",
-		Name:        "OpenRouter",
-		DefaultAuth: "apikey",
-		Models: []ModelSpec{
-			{ID: "openrouter/auto", Name: "OpenRouter Auto Router", ContextWindow: 128000, MaxOutput: 8192, Description: "Best value auto-routing", SupportsImages: true},
-			{ID: "anthropic/claude-3.5-sonnet", Name: "Claude 3.5 Sonnet (OpenRouter)", ContextWindow: 200000, MaxOutput: 8192, Description: "Routed via OpenRouter API", SupportsImages: true},
-		},
-	},
-	{
-		ID:             "ollama",
-		Name:           "Ollama (Local)",
-		DefaultAuth:    "local",
-		RequiresURL:    true,
-		DefaultBaseURL: "http://localhost:11434",
-		Models: []ModelSpec{
-			{ID: "qwen2.5-coder:32b", Name: "Qwen 2.5 Coder 32B", ContextWindow: 32000, MaxOutput: 8192, Description: "Local coding powerhouse", SupportsImages: false},
-			{ID: "llama3.3:70b", Name: "Llama 3.3 70B", ContextWindow: 128000, MaxOutput: 8192, Description: "Local open foundation model", SupportsImages: false},
-			{ID: "deepseek-r1:14b", Name: "DeepSeek R1 14B", ContextWindow: 64000, MaxOutput: 8192, Description: "Local distil reasoning model", SupportsImages: false},
-		},
-	},
-}
-
-// GetAvailableProviders returns the full catalog of supported AI providers
-func GetAvailableProviders() []ProviderSpec {
-	return catalog
-}
-
-// GetModelsForProvider returns all supported models under a specific provider ID
-func GetModelsForProvider(providerID string) []ModelSpec {
-	for _, p := range catalog {
-		if p.ID == providerID {
-			return p.Models
-		}
 	}
-	return nil
 }
 
-// GetProviderByID retrieves provider details by ID
-func GetProviderByID(providerID string) *ProviderSpec {
-	for _, p := range catalog {
-		if p.ID == providerID {
+func GetProviderByID(id string) *ProviderInfo {
+	providers := GetAvailableProviders()
+	for _, p := range providers {
+		if p.ID == id {
 			return &p
 		}
 	}
 	return nil
+}
+
+func GetModelsForProvider(providerID string) []ModelInfo {
+	p := GetProviderByID(providerID)
+	if p != nil {
+		return p.Models
+	}
+	return nil
+}
+
+type openAIModelList struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+type geminiModelList struct {
+	Models []struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+	} `json:"models"`
+}
+
+type ollamaTagsResponse struct {
+	Models []struct {
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
+// FetchLiveModelsForProvider dynamically fetches real-time available models from provider REST APIs
+func FetchLiveModelsForProvider(ctx context.Context, providerID string, apiKey string) ([]ModelInfo, error) {
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	switch strings.ToLower(providerID) {
+	case "openai":
+		if apiKey == "" {
+			return GetModelsForProvider("openai"), nil
+		}
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.openai.com/v1/models", nil)
+		if err != nil {
+			return GetModelsForProvider("openai"), nil
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode != 200 {
+			return GetModelsForProvider("openai"), nil
+		}
+		defer resp.Body.Close()
+
+		var list openAIModelList
+		if err := json.NewDecoder(resp.Body).Decode(&list); err == nil && len(list.Data) > 0 {
+			var fetched []ModelInfo
+			for _, m := range list.Data {
+				if strings.HasPrefix(m.ID, "gpt-4") || strings.HasPrefix(m.ID, "o1") || strings.HasPrefix(m.ID, "o3") {
+					fetched = append(fetched, ModelInfo{ID: m.ID, Name: m.ID + " (Live)", Description: "Fetched via OpenAI Live API"})
+				}
+			}
+			if len(fetched) > 0 {
+				return fetched, nil
+			}
+		}
+		return GetModelsForProvider("openai"), nil
+
+	case "gemini":
+		if apiKey == "" {
+			return GetModelsForProvider("gemini"), nil
+		}
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1/models?key=%s", apiKey)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return GetModelsForProvider("gemini"), nil
+		}
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode != 200 {
+			return GetModelsForProvider("gemini"), nil
+		}
+		defer resp.Body.Close()
+
+		var list geminiModelList
+		if err := json.NewDecoder(resp.Body).Decode(&list); err == nil && len(list.Models) > 0 {
+			var fetched []ModelInfo
+			for _, m := range list.Models {
+				cleanID := strings.TrimPrefix(m.Name, "models/")
+				fetched = append(fetched, ModelInfo{ID: cleanID, Name: m.DisplayName + " (Live)", Description: "Fetched via Gemini Live API"})
+			}
+			if len(fetched) > 0 {
+				return fetched, nil
+			}
+		}
+		return GetModelsForProvider("gemini"), nil
+
+	case "ollama":
+		req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:11434/api/tags", nil)
+		if err != nil {
+			return GetModelsForProvider("ollama"), nil
+		}
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode != 200 {
+			return GetModelsForProvider("ollama"), nil
+		}
+		defer resp.Body.Close()
+
+		var tags ollamaTagsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&tags); err == nil && len(tags.Models) > 0 {
+			var fetched []ModelInfo
+			for _, m := range tags.Models {
+				fetched = append(fetched, ModelInfo{ID: m.Name, Name: m.Name + " (Local)", Description: "Fetched via Ollama Daemon API"})
+			}
+			if len(fetched) > 0 {
+				return fetched, nil
+			}
+		}
+		return GetModelsForProvider("ollama"), nil
+
+	default:
+		return GetModelsForProvider(providerID), nil
+	}
 }

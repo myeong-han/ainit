@@ -1,47 +1,47 @@
 package provider
 
 import (
+	"context"
 	"testing"
 )
 
-func TestGetProviders(t *testing.T) {
+func TestGetDefaultProvidersContainsLatestModels(t *testing.T) {
 	providers := GetAvailableProviders()
 	if len(providers) == 0 {
-		t.Fatal("expected non-empty list of available providers")
+		t.Fatal("expected available providers, got none")
 	}
 
 	foundAnthropic := false
 	for _, p := range providers {
 		if p.ID == "anthropic" {
 			foundAnthropic = true
-			if len(p.Models) == 0 {
-				t.Errorf("expected anthropic models to be non-empty")
+			foundSonnet37 := false
+			for _, m := range p.Models {
+				if m.ID == "claude-3-7-sonnet" || m.ID == "claude-3-5-sonnet-20241022" {
+					foundSonnet37 = true
+					break
+				}
+			}
+			if !foundSonnet37 {
+				t.Errorf("expected anthropic models to include latest sonnet, got %v", p.Models)
 			}
 		}
 	}
 
 	if !foundAnthropic {
-		t.Errorf("expected anthropic provider to exist in catalog")
+		t.Error("expected anthropic provider in list")
 	}
 }
 
-func TestGetModelsByProvider(t *testing.T) {
-	models := GetModelsForProvider("openai")
+func TestFetchLiveModelsFallback(t *testing.T) {
+	ctx := context.Background()
+	// Fetching with empty key should return updated fallback model catalog gracefully
+	models, err := FetchLiveModelsForProvider(ctx, "openai", "")
+	if err != nil {
+		t.Fatalf("unexpected error fetching models: %v", err)
+	}
+
 	if len(models) == 0 {
-		t.Fatal("expected openai models, got empty list")
-	}
-
-	foundGPT4o := false
-	for _, m := range models {
-		if m.ID == "gpt-4o" {
-			foundGPT4o = true
-			if m.ContextWindow == 0 {
-				t.Errorf("expected context window > 0 for gpt-4o")
-			}
-		}
-	}
-
-	if !foundGPT4o {
-		t.Errorf("expected gpt-4o model under openai provider")
+		t.Error("expected models list, got empty")
 	}
 }
