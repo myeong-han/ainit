@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/myeong-han/ainit/pkg/ai"
 	"github.com/myeong-han/ainit/pkg/command"
 	"github.com/myeong-han/ainit/pkg/config"
 	"github.com/myeong-han/ainit/pkg/connection"
@@ -65,6 +66,8 @@ type Model struct {
 	cfg                    *config.Config
 	cmdEngine              *command.CommandEngine
 	connTester             *connection.ConnectionTester
+	aiEngine               *ai.Engine
+	userApiKey             string
 	sessMgr                *session.SessionManager
 	activeSession          *session.Session
 	resumeSummaries        []session.SessionSummary
@@ -237,6 +240,8 @@ func NewModel(cfg *config.Config) Model {
 		cfg:                    cfg,
 		cmdEngine:              command.NewCommandEngine(cfg),
 		connTester:             connection.NewConnectionTester(),
+		aiEngine:               ai.NewEngine(cfg),
+		userApiKey:             "",
 		sessMgr:                sessMgr,
 		activeSession:          activeSess,
 		currentStep:            Step0,
@@ -333,6 +338,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.activeSession = loadedSess
 						m.cfg = loadedCfg
 						m.cmdEngine = command.NewCommandEngine(loadedCfg)
+						m.aiEngine = ai.NewEngine(loadedCfg)
 
 						m.chatHistory = nil
 						for _, item := range loadedHist {
@@ -363,6 +369,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = ModeWizard
 
 				if m.keyTarget == "ai" {
+					m.userApiKey = keyVal
 					res := m.connTester.TestAIProvider(m.cfg.Step0.ProviderID, keyVal)
 					if res.Connected {
 						m.aiConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
@@ -523,6 +530,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.activeSession = loadedSess
 							m.cfg = loadedCfg
 							m.cmdEngine = command.NewCommandEngine(loadedCfg)
+							m.aiEngine = ai.NewEngine(loadedCfg)
 							m.chatHistory = nil
 							for _, item := range loadedHist {
 								m.chatHistory = append(m.chatHistory, ChatMessage{Sender: item.Sender, Content: item.Content})
@@ -573,10 +581,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
-				m.chatHistory = append(m.chatHistory, ChatMessage{
-					Sender:  "Agent",
-					Content: fmt.Sprintf("Received architecture prompt: '%s'. Press 'Ctrl+S' to generate docs & code.", val),
-				})
+				// Real Authenticated AI Chat Communication
+				aiResp, err := m.aiEngine.GenerateChatResponse(context.Background(), val, m.userApiKey)
+				if err != nil {
+					m.chatHistory = append(m.chatHistory, ChatMessage{
+						Sender:  "Agent",
+						Content: fmt.Sprintf("⚠️ AI Communication Error: %v", err),
+					})
+				} else {
+					m.chatHistory = append(m.chatHistory, ChatMessage{
+						Sender:  "Agent",
+						Content: aiResp,
+					})
+				}
+
 				m.promptInput.Reset()
 				m.slashDropdownOpen = false
 				m.slashDropdownDismissed = false
@@ -1116,7 +1134,7 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(fmt.Sprintf("%s %s %s\n\n", sidebarKeyStyle.Render("• Msg  :"), sidebarValStyle.Render(m.cfg.Step2.Messenger), sidebarReadyStyle.Render(truncateStr(m.msgConnStatus, 7))))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 3: Harness & TDD (Playwright & Local Loop 추가)
+	// Step 3: Harness & TDD
 	sb.WriteString(sidebarSectionStyle.Render("Step 3: Harness & TDD") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Commit:"), sidebarValStyle.Render(m.cfg.Step3.CommitConvention)))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• PRTpl :"), sidebarValStyle.Render(m.cfg.Step3.PRTemplateStyle)))
