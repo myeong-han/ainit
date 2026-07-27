@@ -44,7 +44,7 @@ type Mode int
 
 const (
 	ModePromptInput Mode = iota // Default Main Chatting Mode
-	ModeWizard                  // Step Config Form Mode (via /set-confs)
+	ModeWizard                  // Step Config Form Mode (via /settings)
 	ModeConfirm                 // Confirmation Prompt before execution
 	ModeGenerating
 	ModeDone
@@ -196,7 +196,7 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ta := textarea.New()
-	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /gen-all)..."
+	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /settings, /gen-all)..."
 	ta.SetWidth(60)
 	ta.SetHeight(4)
 	ta.Focus()
@@ -331,7 +331,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "User", Content: val})
 
-				if val == "/set-confs" {
+				if val == "/settings" {
 					m.mode = ModeWizard
 					m.statusMsg = "Switched to Config Wizard Form. Press 'Tab' to navigate steps or 'Esc' to return to Chat."
 					m.promptInput.Reset()
@@ -389,7 +389,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.slashDropdownDismissed = false
 		}
 
-		// Dynamically filter slash commands based on typed prefix (evaluated AFTER textarea update)
 		if !m.slashDropdownDismissed && strings.HasPrefix(currVal, "/") && !strings.Contains(currVal, " ") {
 			filtered := filterSlashCommands(currVal)
 			if len(filtered) > 0 {

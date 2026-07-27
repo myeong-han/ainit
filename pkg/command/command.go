@@ -15,7 +15,7 @@ type ActionType int
 
 const (
 	ActionNone ActionType = iota
-	ActionSetConfs
+	ActionSettings
 	ActionGenDocs
 	ActionGenCodes
 	ActionGenGitOps
@@ -47,7 +47,7 @@ func NewCommandEngine(cfg *config.Config) *CommandEngine {
 func GetAvailableSlashCommands() []SlashOption {
 	return []SlashOption{
 		{Name: "/git-init", Description: "Set project name, clone/init remote repo & update work-dir", Example: "/git-init my-cool-app"},
-		{Name: "/set-confs", Description: "Configure Name, AI Provider, Arch, Git & Conventions", Example: "/set-confs --name my-app --provider openai"},
+		{Name: "/settings", Description: "Configure Name, AI Provider, Arch, Git & Conventions", Example: "/settings --name my-app --provider openai"},
 		{Name: "/gen-docs", Description: "Generate Architecture Spec & Mermaid Diagrams", Example: "/gen-docs"},
 		{Name: "/gen-codes", Description: "Generate Agent Context Rules & Scaffolding", Example: "/gen-codes"},
 		{Name: "/gen-gitops", Description: "Generate K8s, Helm Charts & ArgoCD GitOps Manifests", Example: "/gen-gitops"},
@@ -74,8 +74,8 @@ func (e *CommandEngine) Execute(input string) (*Result, error) {
 	switch cmdName {
 	case "/git-init":
 		return e.handleGitInit(parts[1:])
-	case "/set-confs":
-		return e.handleSetConfs(parts[1:])
+	case "/settings":
+		return e.handleSettings(parts[1:])
 	case "/gen-docs":
 		return e.handleGenDocs()
 	case "/gen-codes":
@@ -127,7 +127,7 @@ func (e *CommandEngine) handleGitInit(args []string) (*Result, error) {
 		return nil, fmt.Errorf("git-init failed: %v", err)
 	}
 
-	msg := fmt.Sprintf("🐙 [%s] Project Name set to '%s'!\nRepo: %s\nUpdated Working Directory: %s", strings.ToUpper(res.Action), projName, repoPath, res.WorkDir)
+	msg := fmt.Sprintf("[%s] Project Name set to '%s'!\nRepo: %s\nUpdated Working Directory: %s", strings.ToUpper(res.Action), projName, repoPath, res.WorkDir)
 
 	return &Result{
 		Action:  ActionGitInit,
@@ -135,7 +135,7 @@ func (e *CommandEngine) handleGitInit(args []string) (*Result, error) {
 	}, nil
 }
 
-func (e *CommandEngine) handleSetConfs(args []string) (*Result, error) {
+func (e *CommandEngine) handleSettings(args []string) (*Result, error) {
 	var updated []string
 
 	for i := 0; i < len(args); i++ {
@@ -176,11 +176,11 @@ func (e *CommandEngine) handleSetConfs(args []string) (*Result, error) {
 
 	msg := "Updated configs: " + strings.Join(updated, ", ")
 	if len(updated) == 0 {
-		msg = "No configs specified. Usage: /set-confs --name my-app --provider anthropic --arch msa --git github"
+		msg = "No settings specified. Usage: /settings --name my-app --provider anthropic --arch msa --git github"
 	}
 
 	return &Result{
-		Action:  ActionSetConfs,
+		Action:  ActionSettings,
 		Message: msg,
 	}, nil
 }
@@ -193,7 +193,7 @@ func (e *CommandEngine) handleGenDocs() (*Result, error) {
 
 	return &Result{
 		Action:  ActionGenDocs,
-		Message: "📄 Successfully generated docs/ARCHITECTURE_SPEC.md with Mermaid diagrams!",
+		Message: "Successfully generated docs/ARCHITECTURE_SPEC.md with Mermaid diagrams!",
 	}, nil
 }
 
@@ -205,7 +205,7 @@ func (e *CommandEngine) handleGenCodes() (*Result, error) {
 
 	return &Result{
 		Action:  ActionGenCodes,
-		Message: "💻 Successfully generated AGENTS.md, CLAUDE.md, .cursorrules & agent context rules!",
+		Message: "Successfully generated AGENTS.md, CLAUDE.md, .cursorrules & agent context rules!",
 	}, nil
 }
 
@@ -217,7 +217,7 @@ func (e *CommandEngine) handleGenGitOps() (*Result, error) {
 
 	return &Result{
 		Action:  ActionGenGitOps,
-		Message: "☸️ Successfully generated GitOps manifests: Helm Chart & ArgoCD Application YAML in gitops/",
+		Message: "Successfully generated GitOps manifests: Helm Chart & ArgoCD Application YAML in gitops/",
 	}, nil
 }
 
@@ -229,14 +229,14 @@ func (e *CommandEngine) handleGenAll() (*Result, error) {
 
 	return &Result{
 		Action:  ActionGenAll,
-		Message: "🚀 Sequential /gen-all pipeline complete! Generated /gen-docs, /gen-codes, and /gen-gitops successfully!",
+		Message: "Sequential /gen-all pipeline complete! Generated /gen-docs, /gen-codes, and /gen-gitops successfully!",
 	}, nil
 }
 
 func (e *CommandEngine) handleHelp() (*Result, error) {
 	helpMsg := `Available Slash Commands:
 • /git-init <name>       : Set project name, clone/init remote repo & update work-dir
-• /set-confs --name <app> --provider <id> --arch <msa|monolith> --git <github|bitbucket>
+• /settings --name <app> --provider <id> --arch <msa|monolith> --git <github|bitbucket>
 • /gen-docs   : Generate docs/ARCHITECTURE_SPEC.md & 4 Mermaid diagrams
 • /gen-codes  : Generate AGENTS.md, CLAUDE.md & cross-agent context rules
 • /gen-gitops : Generate Helm Charts & ArgoCD GitOps Application manifests

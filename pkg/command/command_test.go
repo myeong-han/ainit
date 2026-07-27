@@ -1,6 +1,7 @@
 package command
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/myeong-han/ainit/pkg/config"
@@ -8,40 +9,47 @@ import (
 
 func TestGetAvailableSlashCommands(t *testing.T) {
 	cmds := GetAvailableSlashCommands()
-	if len(cmds) == 0 {
-		t.Fatal("expected non-empty list of slash commands")
-	}
-
 	foundGitInit := false
-	for _, c := range cmds {
-		if c.Name == "/git-init" {
+	foundSettings := false
+
+	for _, cmd := range cmds {
+		if cmd.Name == "/git-init" {
 			foundGitInit = true
 		}
-		if c.Name == "/set-name" {
-			t.Error("/set-name should be removed from available slash commands")
+		if cmd.Name == "/settings" {
+			foundSettings = true
+		}
+		if cmd.Name == "/set-name" || cmd.Name == "/set-confs" {
+			t.Errorf("found deprecated command '%s' in slash commands list", cmd.Name)
 		}
 	}
 
 	if !foundGitInit {
-		t.Error("expected /git-init in available slash commands")
+		t.Error("expected /git-init in slash commands list")
+	}
+	if !foundSettings {
+		t.Error("expected /settings in slash commands list")
 	}
 }
 
 func TestGitInitWithNameUpdatesProjectName(t *testing.T) {
 	cfg := config.NewDefaultConfig()
-	cmdEngine := NewCommandEngine(cfg)
+	engine := NewCommandEngine(cfg)
 
-	// Execute /git-init my-service-app
-	res, err := cmdEngine.Execute("/git-init my-service-app")
+	targetDir := filepath.Join(".", "my-service-app")
+
+	res, err := engine.Execute("/git-init my-service-app")
 	if err != nil {
-		t.Fatalf("expected no error executing /git-init my-service-app, got: %v", err)
+		t.Fatalf("unexpected error executing /git-init: %v", err)
 	}
 
 	if cfg.Step1.ProjectName != "my-service-app" {
-		t.Errorf("expected project name to be updated to 'my-service-app', got '%s'", cfg.Step1.ProjectName)
+		t.Errorf("expected ProjectName to be updated to 'my-service-app', got '%s'", cfg.Step1.ProjectName)
 	}
 
 	if res.Action != ActionGitInit {
-		t.Errorf("expected action ActionGitInit, got %v", res.Action)
+		t.Errorf("expected ActionGitInit, got %v", res.Action)
 	}
+
+	_ = targetDir
 }

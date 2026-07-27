@@ -34,7 +34,7 @@ TUI 대화창/프롬프트 모드에서 `/`를 입력하면 드롭다운 오토�
 | Slash Command | Usage / Description | Example |
 | :--- | :--- | :--- |
 | **`/git-init`** | 프로젝트명 지정 + 원격 레포 존재 시 `git clone` 후 `work-dir` 업데이트, 없으면 신규 레포 초기화 | `/git-init my-cool-app` 또는 `/git-init myeong-han/my-app` |
-| **`/set-confs`** | TUI 설정을 CLI 인자 형태로 즉시 업데이트 | `/set-confs --name my-app --provider openai --arch msa` |
+| **`/settings`** | TUI 설정을 CLI 인자 형태로 즉시 업데이트 또는 인터랙티브 설정 폼으로 전환 | `/settings --name my-app --provider openai --arch msa` |
 | **`/gen-docs`** | `docs/ARCHITECTURE_SPEC.md` 아키텍처 설계서 및 4종 Mermaid 차트 즉시 생성 | `/gen-docs` |
 | **`/gen-codes`** | `AGENTS.md`, `CLAUDE.md`, `.cursorrules` 등 이종 에이전트 룰 파일 생성 | `/gen-codes` |
 | **`/gen-gitops`** | Helm Charts (`Chart.yaml`, `values.yaml`) 및 ArgoCD Application manifest 생성 | `/gen-gitops` |
