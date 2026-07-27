@@ -241,7 +241,7 @@ func NewModel(cfg *config.Config) Model {
 		cmdEngine:              command.NewCommandEngine(cfg),
 		connTester:             connection.NewConnectionTester(),
 		aiEngine:               ai.NewEngine(cfg),
-		userApiKey:             "",
+		userApiKey:             cfg.Step0.ApiKey,
 		sessMgr:                sessMgr,
 		activeSession:          activeSess,
 		currentStep:            Step0,
@@ -303,6 +303,50 @@ func (m Model) persistCurrentSession() {
 	_ = m.sessMgr.SaveSession(m.activeSession.ID, m.cfg, histItems)
 }
 
+func (m *Model) restoreSessionState(loadedSess *session.Session, loadedCfg *config.Config, loadedHist []session.ChatMessageItem) {
+	m.activeSession = loadedSess
+	m.cfg = loadedCfg
+	m.cmdEngine = command.NewCommandEngine(loadedCfg)
+	m.aiEngine = ai.NewEngine(loadedCfg)
+
+	// Restore API Key and Connection Statuses
+	m.userApiKey = loadedCfg.Step0.ApiKey
+	if m.userApiKey != "" {
+		m.aiConnStatus = "🟢 Verified"
+	} else {
+		m.aiConnStatus = "[UNTESTED]"
+	}
+
+	if loadedCfg.Step2.GitToken != "" {
+		m.gitConnStatus = "🟢 Verified"
+	} else {
+		m.gitConnStatus = "[READY]"
+	}
+
+	if loadedCfg.Step2.KubeconfigPath != "" {
+		m.k8sConnStatus = "🟢 CONNECTED"
+	} else {
+		m.k8sConnStatus = "[ON]"
+	}
+
+	if loadedCfg.Step2.DocToken != "" {
+		m.docConnStatus = "🟢 Verified"
+	} else {
+		m.docConnStatus = "[READY]"
+	}
+
+	if loadedCfg.Step2.SlackWebhook != "" {
+		m.msgConnStatus = "🟢 200 OK"
+	} else {
+		m.msgConnStatus = "[READY]"
+	}
+
+	m.chatHistory = nil
+	for _, item := range loadedHist {
+		m.chatHistory = append(m.chatHistory, ChatMessage{Sender: item.Sender, Content: item.Content})
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(tea.Msg).(type) {
 	case tea.WindowSizeMsg:
@@ -335,18 +379,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if err != nil {
 						m.statusMsg = fmt.Sprintf("Failed to resume session: %v", err)
 					} else {
-						m.activeSession = loadedSess
-						m.cfg = loadedCfg
-						m.cmdEngine = command.NewCommandEngine(loadedCfg)
-						m.aiEngine = ai.NewEngine(loadedCfg)
-
-						m.chatHistory = nil
-						for _, item := range loadedHist {
-							m.chatHistory = append(m.chatHistory, ChatMessage{Sender: item.Sender, Content: item.Content})
-						}
-
+						m.restoreSessionState(loadedSess, loadedCfg, loadedHist)
 						m.mode = ModePromptInput
-						m.statusMsg = fmt.Sprintf("Resumed Session '%s' (%s) with bound /settings config!", loadedSess.ID, loadedSess.ProjectName)
+						m.statusMsg = fmt.Sprintf("Resumed Session '%s' (%s) with restored /settings config & API Key!", loadedSess.ID, loadedSess.ProjectName)
 					}
 					return m, textarea.Blink
 				}
@@ -370,6 +405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				if m.keyTarget == "ai" {
 					m.userApiKey = keyVal
+					m.cfg.Step0.ApiKey = keyVal
 					res := m.connTester.TestAIProvider(m.cfg.Step0.ProviderID, keyVal)
 					if res.Connected {
 						m.aiConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
@@ -379,6 +415,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusMsg = fmt.Sprintf("AI Connection Failed: %s", res.ErrorMessage)
 					}
 				} else if m.keyTarget == "git" {
+					m.cfg.Step2.GitToken = keyVal
 					res := m.connTester.TestGitProvider(context.Background(), m.cfg.Step2.GitProvider, keyVal)
 					if res.Connected {
 						m.gitConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
@@ -400,6 +437,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusMsg = fmt.Sprintf("K8s Connection Failed (%s): %s", m.cfg.Step2.KubeconfigPath, res.ErrorMessage)
 					}
 				} else if m.keyTarget == "doc" {
+					m.cfg.Step2.DocToken = keyVal
 					res := m.connTester.TestDocSync("notion", keyVal)
 					if res.Connected {
 						m.docConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
@@ -409,6 +447,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusMsg = fmt.Sprintf("Notion Sync Failed: %s", res.ErrorMessage)
 					}
 				} else if m.keyTarget == "msg" {
+					m.cfg.Step2.SlackWebhook = keyVal
 					if keyVal != "" {
 						m.msgConnStatus = "🟢 200 OK"
 						m.statusMsg = "Slack Webhook URL configured successfully!"
@@ -527,14 +566,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: fmt.Sprintf("❌ Error: %v", err)})
 							m.statusMsg = fmt.Sprintf("Failed to resume session '%s'", targetID)
 						} else {
-							m.activeSession = loadedSess
-							m.cfg = loadedCfg
-							m.cmdEngine = command.NewCommandEngine(loadedCfg)
-							m.aiEngine = ai.NewEngine(loadedCfg)
-							m.chatHistory = nil
-							for _, item := range loadedHist {
-								m.chatHistory = append(m.chatHistory, ChatMessage{Sender: item.Sender, Content: item.Content})
-							}
+							m.restoreSessionState(loadedSess, loadedCfg, loadedHist)
 							m.statusMsg = fmt.Sprintf("Resumed Session '%s' (%s)!", loadedSess.ID, loadedSess.ProjectName)
 						}
 						return m, nil

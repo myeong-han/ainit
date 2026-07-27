@@ -11,6 +11,7 @@ type Step0Config struct {
 	PrimaryModel  string `json:"primary_model"`
 	LicensingMode string `json:"licensing_mode"`
 	FallbackModel string `json:"fallback_model"`
+	ApiKey        string `json:"api_key,omitempty"`
 }
 
 type Step1Config struct {
@@ -23,12 +24,15 @@ type Step1Config struct {
 
 type Step2Config struct {
 	GitProvider    string `json:"git_provider"`
+	GitToken       string `json:"git_token,omitempty"`
 	K8sTarget      string `json:"k8s_target"`
 	KubeconfigPath string `json:"kubeconfig_path"`
 	CI             string `json:"ci"`
 	CD             string `json:"cd"`
 	Doc            string `json:"doc"`
+	DocToken       string `json:"doc_token,omitempty"`
 	Messenger      string `json:"messenger"`
+	SlackWebhook   string `json:"slack_webhook,omitempty"`
 }
 
 type Step3Config struct {
