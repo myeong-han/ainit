@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -157,17 +158,22 @@ func (c *ConnectionTester) TestGitProvider(ctx context.Context, provider string,
 	}
 }
 
-// TestK8sCluster checks kubectl connectivity to target Kubernetes cluster
-func (c *ConnectionTester) TestK8sCluster(target string) ConnectionResult {
+// TestK8sCluster checks kubectl connectivity using specified kubeconfig path
+func (c *ConnectionTester) TestK8sCluster(kubeconfigPath string) ConnectionResult {
 	start := time.Now()
 
-	cmd := exec.Command("kubectl", "cluster-info")
+	if kubeconfigPath == "" {
+		homeDir, _ := os.UserHomeDir()
+		kubeconfigPath = fmt.Sprintf("%s/.kube/config", homeDir)
+	}
+
+	cmd := exec.Command("kubectl", "--kubeconfig", kubeconfigPath, "cluster-info")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return ConnectionResult{
 			Service:      "kubernetes",
 			Connected:    false,
-			ErrorMessage: fmt.Sprintf("kubectl cluster-info failed: %s", strings.TrimSpace(string(output))),
+			ErrorMessage: fmt.Sprintf("kubectl cluster-info failed (config: %s): %s", kubeconfigPath, strings.TrimSpace(string(output))),
 			LatencyMs:    time.Since(start).Milliseconds(),
 		}
 	}

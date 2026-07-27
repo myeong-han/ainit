@@ -1,6 +1,10 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"os"
+	"path/filepath"
+)
 
 type Step0Config struct {
 	ProviderID    string `json:"provider_id"`
@@ -18,12 +22,13 @@ type Step1Config struct {
 }
 
 type Step2Config struct {
-	GitProvider string `json:"git_provider"`
-	K8sTarget   string `json:"k8s_target"`
-	CI          string `json:"ci"`
-	CD          string `json:"cd"`
-	Doc         string `json:"doc"`
-	Messenger   string `json:"messenger"`
+	GitProvider    string `json:"git_provider"`
+	K8sTarget      string `json:"k8s_target"`
+	KubeconfigPath string `json:"kubeconfig_path"`
+	CI             string `json:"ci"`
+	CD             string `json:"cd"`
+	Doc            string `json:"doc"`
+	Messenger      string `json:"messenger"`
 }
 
 type Step3Config struct {
@@ -49,6 +54,11 @@ type Config struct {
 }
 
 func NewDefaultConfig() *Config {
+	homeDir, _ := os.UserHomeDir()
+	if homeDir == "" {
+		homeDir = os.Getenv("HOME")
+	}
+
 	return &Config{
 		Step0: Step0Config{
 			ProviderID:    "anthropic",
@@ -64,12 +74,13 @@ func NewDefaultConfig() *Config {
 			GenerateGitOps:    true,
 		},
 		Step2: Step2Config{
-			GitProvider: "github",
-			K8sTarget:   "local",
-			CI:          "jenkins",
-			CD:          "argocd",
-			Doc:         "notion",
-			Messenger:   "slack",
+			GitProvider:    "github",
+			K8sTarget:      "local",
+			KubeconfigPath: filepath.Join(homeDir, ".kube", "config"),
+			CI:             "jenkins",
+			CD:             "argocd",
+			Doc:            "notion",
+			Messenger:      "slack",
 		},
 		Step3: Step3Config{
 			CommitConvention: "conventional",

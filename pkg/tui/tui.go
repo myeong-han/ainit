@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -47,7 +48,7 @@ type Mode int
 const (
 	ModePromptInput Mode = iota // Default Main Chatting Mode
 	ModeWizard                  // Step Config Form Mode (via /settings)
-	ModeKeyInput                // API Key / Token Input Modal
+	ModeKeyInput                // API Key / Token / Kubeconfig Input Modal
 	ModeConfirm                 // Confirmation Prompt before execution
 	ModeGenerating
 	ModeDone
@@ -83,6 +84,7 @@ type Model struct {
 	genResult              string
 	aiConnStatus           string
 	gitConnStatus          string
+	k8sConnStatus          string
 	docConnStatus          string
 	msgConnStatus          string
 }
@@ -206,9 +208,8 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ki := textinput.New()
-	ki.Placeholder = "Enter API Key / Token / Webhook URL..."
-	ki.EchoMode = textinput.EchoPassword
-	ki.EchoCharacter = '•'
+	ki.Placeholder = "Enter API Key / Token / Path..."
+	ki.EchoMode = textinput.EchoNormal
 
 	ta := textarea.New()
 	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /settings, /gen-all)..."
@@ -243,6 +244,7 @@ func NewModel(cfg *config.Config) Model {
 		statusMsg:              "Main Chatting View | Type '/git-init <name>' to set project name | Press Ctrl+S to submit",
 		aiConnStatus:           "[UNTESTED]",
 		gitConnStatus:          "[READY]",
+		k8sConnStatus:          "[ON]",
 		docConnStatus:          "[READY]",
 		msgConnStatus:          "[READY]",
 	}
@@ -306,6 +308,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						m.gitConnStatus = fmt.Sprintf("❌ FAILED (%s)", res.ErrorMessage)
 						m.statusMsg = fmt.Sprintf("Git Connection Failed: %s", res.ErrorMessage)
+					}
+				} else if m.keyTarget == "k8s" {
+					if keyVal != "" {
+						m.cfg.Step2.KubeconfigPath = keyVal
+					}
+					res := m.connTester.TestK8sCluster(m.cfg.Step2.KubeconfigPath)
+					if res.Connected {
+						m.k8sConnStatus = "🟢 CONNECTED"
+						m.statusMsg = fmt.Sprintf("Kubernetes Cluster Verified via kubeconfig '%s'! (%dms)", m.cfg.Step2.KubeconfigPath, res.LatencyMs)
+					} else {
+						m.k8sConnStatus = "❌ FAILED"
+						m.statusMsg = fmt.Sprintf("K8s Connection Failed (%s): %s", m.cfg.Step2.KubeconfigPath, res.ErrorMessage)
 					}
 				} else if m.keyTarget == "doc" {
 					res := m.connTester.TestDocSync("notion", keyVal)
@@ -602,6 +616,7 @@ func (m *Model) toggleCurrentField() {
 		case 2:
 			m.mode = ModeKeyInput
 			m.keyTarget = "ai"
+			m.keyInput.EchoMode = textinput.EchoPassword
 			m.keyInput.Placeholder = fmt.Sprintf("Enter %s API Key...", strings.ToUpper(m.cfg.Step0.ProviderID))
 			m.keyInput.Focus()
 			m.statusMsg = "Type your API Key and press Enter to test connection."
@@ -655,17 +670,19 @@ func (m *Model) toggleCurrentField() {
 		case 0:
 			m.mode = ModeKeyInput
 			m.keyTarget = "git"
+			m.keyInput.EchoMode = textinput.EchoPassword
 			m.keyInput.Placeholder = fmt.Sprintf("Enter %s Personal Access Token...", strings.ToUpper(m.cfg.Step2.GitProvider))
 			m.keyInput.Focus()
 			m.statusMsg = "Type Git Token and press Enter to test connection."
 
 		case 1:
-			res := m.connTester.TestK8sCluster(m.cfg.Step2.K8sTarget)
-			if res.Connected {
-				m.statusMsg = fmt.Sprintf("Kubernetes Cluster Connected! (%dms)", res.LatencyMs)
-			} else {
-				m.statusMsg = fmt.Sprintf("K8s Connection Failed: %s", res.ErrorMessage)
-			}
+			m.mode = ModeKeyInput
+			m.keyTarget = "k8s"
+			m.keyInput.EchoMode = textinput.EchoNormal
+			m.keyInput.SetValue(m.cfg.Step2.KubeconfigPath)
+			m.keyInput.Placeholder = "Enter kubeconfig path (default: $HOME/.kube/config)..."
+			m.keyInput.Focus()
+			m.statusMsg = "Specify kubeconfig path and press Enter to test Kubernetes cluster connectivity."
 
 		case 2:
 			m.statusMsg = "CI Tool is fixed to [jenkins]."
@@ -676,6 +693,7 @@ func (m *Model) toggleCurrentField() {
 		case 4:
 			m.mode = ModeKeyInput
 			m.keyTarget = "doc"
+			m.keyInput.EchoMode = textinput.EchoPassword
 			m.keyInput.Placeholder = "Enter Notion Integration Token..."
 			m.keyInput.Focus()
 			m.statusMsg = "Type Notion Token and press Enter to test connection."
@@ -683,6 +701,7 @@ func (m *Model) toggleCurrentField() {
 		case 5:
 			m.mode = ModeKeyInput
 			m.keyTarget = "msg"
+			m.keyInput.EchoMode = textinput.EchoNormal
 			m.keyInput.Placeholder = "Enter Slack Webhook URL..."
 			m.keyInput.Focus()
 			m.statusMsg = "Type Slack Webhook URL and press Enter to configure."
@@ -810,12 +829,12 @@ func (m Model) View() string {
 func (m Model) renderLeftColumn(width int) string {
 	if m.mode == ModeKeyInput {
 		var sb strings.Builder
-		sb.WriteString(headerStyle.Render("🔑 API Key & Token Verification Modal"))
+		sb.WriteString(headerStyle.Render("🔑 Kubeconfig Path & Key Verification Modal"))
 		sb.WriteString("\n\n")
 		sb.WriteString(fmt.Sprintf("Target Service: %s\n\n", strings.ToUpper(m.keyTarget)))
 		sb.WriteString(m.keyInput.View())
 		sb.WriteString("\n\n")
-		sb.WriteString(hintStyle.Render("[Press Enter to test connection via HTTPS | Press Esc to cancel]"))
+		sb.WriteString(hintStyle.Render("[Press Enter to save and test connection | Press Esc to cancel]"))
 		return sb.String()
 	}
 
@@ -932,7 +951,7 @@ func (m Model) renderRightSidebarNav() string {
 	// Step 2: MCP Tooling
 	sb.WriteString(sidebarSectionStyle.Render("Step 2: MCP Connections") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render(truncateStr(m.gitConnStatus, 9))))
-	sb.WriteString(fmt.Sprintf("%s %s | %s\n\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(m.cfg.Step2.K8sTarget), sidebarReadyStyle.Render("ArgoCD:ON")))
+	sb.WriteString(fmt.Sprintf("%s %s | %s\n\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(truncateStr(filepath.Base(m.cfg.Step2.KubeconfigPath), 9)), sidebarReadyStyle.Render(truncateStr(m.k8sConnStatus, 9))))
 	sb.WriteString(divider + "\n\n")
 
 	// Step 3: Harness & TDD
@@ -1016,13 +1035,13 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(headerStyle.Render("Step 2: MCP Tooling Connections"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "🔑 Git Token:", "["+m.cfg.Step2.GitProvider+"] "+m.gitConnStatus))
-		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"] (Press Enter to Test)"))
+		sb.WriteString(m.renderRow(1, "🔑 Kubeconfig Path:", "["+truncateStr(m.cfg.Step2.KubeconfigPath, 20)+"] "+m.k8sConnStatus))
 		sb.WriteString(m.renderRow(2, "CI Tool:", "["+m.cfg.Step2.CI+"] [READY]"))
 		sb.WriteString(m.renderRow(3, "CD Tool:", "["+m.cfg.Step2.CD+"] [ON]"))
 		sb.WriteString(m.renderRow(4, "🔑 Doc Tool:", fmt.Sprintf("[%s] %s", m.cfg.Step2.Doc, m.docConnStatus)))
 		sb.WriteString(m.renderRow(5, "🔑 Messenger:", fmt.Sprintf("[%s] %s", m.cfg.Step2.Messenger, m.msgConnStatus)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Press Enter to input Tokens / Webhooks and test live connection]"))
+		sb.WriteString(hintStyle.Render("[Press Enter on Kubeconfig/Tokens to specify custom paths & test connectivity]"))
 
 	case Step3:
 		sb.WriteString(headerStyle.Render("Step 3: Harness TDD & Conventions"))
