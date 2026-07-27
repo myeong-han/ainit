@@ -970,7 +970,7 @@ func (m Model) renderLeftColumn(width int) string {
 		var sb strings.Builder
 		sb.WriteString(headerStyle.Render("🔑 Kubeconfig Path & Key Verification Modal"))
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("Target Service: %s\n\n", strings.ToUpper(m.keyTarget)))
+		sb.WriteString(fmt.Sprintf("Target Service: %s\n\n", stringsToUpper(m.keyTarget)))
 		sb.WriteString(m.keyInput.View())
 		sb.WriteString("\n\n")
 		sb.WriteString(hintStyle.Render("[Press Enter to save and test connection | Press Esc to cancel]"))
@@ -1035,6 +1035,10 @@ func (m Model) renderLeftColumn(width int) string {
 	return m.renderStepBody()
 }
 
+func stringsToUpper(s string) string {
+	return strings.ToUpper(s)
+}
+
 func (m Model) renderSlashDropdown(width int) string {
 	var sb strings.Builder
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFD1")).Render("Slash Commands (Use ↑/↓ to navigate, Enter/Tab to select & edit, Esc to close):") + "\n")
@@ -1048,6 +1052,13 @@ func (m Model) renderSlashDropdown(width int) string {
 	}
 
 	return dropdownBoxStyle.Width(width - 4).Render(sb.String())
+}
+
+func boolToStr(b bool) string {
+	if b {
+		return "Y"
+	}
+	return "N"
 }
 
 func (m Model) renderRightSidebarNav() string {
@@ -1072,55 +1083,45 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(sidebarKeyStyle.Render("App Name: ") + sidebarValStyle.Render(truncateStr(projName, 12)) + "\n")
 	sb.WriteString(divider + "\n\n")
 
-	// Step 0: AI Licensing & Provider
+	// Step 0: AI Licensing & Provider (전체 Config 4종 + Ping)
 	sb.WriteString(sidebarSectionStyle.Render("Step 0: AI Licensing") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Prov :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.ProviderID, 11))))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Model:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.PrimaryModel, 11))))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Auth :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.LicensingMode, 11))))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Fallb:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.FallbackModel, 11))))
 	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Ping :"), sidebarReadyStyle.Render(truncateStr(m.aiConnStatus, 12))))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 1: Arch Spec
-	seqStr := "N"
-	if m.cfg.Step1.GenerateSequence {
-		seqStr = "Y"
-	}
-	gitopsStr := "N"
-	if m.cfg.Step1.GenerateGitOps {
-		gitopsStr = "Y"
-	}
+	// Step 1: Arch Spec (전체 Config 4종)
 	sb.WriteString(sidebarSectionStyle.Render("Step 1: Arch Spec") + "\n")
-	sb.WriteString(fmt.Sprintf("%s %s (%s)\n", sidebarKeyStyle.Render("• Style:"), sidebarValStyle.Render(m.cfg.Step1.ArchitectureStyle), m.cfg.Step1.RepoStructure))
-	sb.WriteString(fmt.Sprintf("%s Seq(%s) Git(%s)\n\n", sidebarKeyStyle.Render("• Diag :"), seqStr, gitopsStr))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Style:"), sidebarValStyle.Render(m.cfg.Step1.ArchitectureStyle)))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Repo :"), sidebarValStyle.Render(m.cfg.Step1.RepoStructure)))
+	sb.WriteString(fmt.Sprintf("%s Seq(%s) Git(%s)\n\n", sidebarKeyStyle.Render("• Diag :"), boolToStr(m.cfg.Step1.GenerateSequence), boolToStr(m.cfg.Step1.GenerateGitOps)))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 2: MCP Tooling
+	// Step 2: MCP Tooling Connections (전체 Config 6종)
 	sb.WriteString(sidebarSectionStyle.Render("Step 2: MCP Connections") + "\n")
-	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render(truncateStr(m.gitConnStatus, 9))))
-	sb.WriteString(fmt.Sprintf("%s %s | %s\n\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(truncateStr(filepath.Base(m.cfg.Step2.KubeconfigPath), 9)), sidebarReadyStyle.Render(truncateStr(m.k8sConnStatus, 9))))
+	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render(truncateStr(m.gitConnStatus, 7))))
+	sb.WriteString(fmt.Sprintf("%s %s | %s\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(truncateStr(filepath.Base(m.cfg.Step2.KubeconfigPath), 8)), sidebarReadyStyle.Render(truncateStr(m.k8sConnStatus, 7))))
+	sb.WriteString(fmt.Sprintf("%s %s/%s\n", sidebarKeyStyle.Render("• CI/CD:"), sidebarValStyle.Render(m.cfg.Step2.CI), sidebarValStyle.Render(m.cfg.Step2.CD)))
+	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Doc  :"), sidebarValStyle.Render(m.cfg.Step2.Doc), sidebarReadyStyle.Render(truncateStr(m.docConnStatus, 7))))
+	sb.WriteString(fmt.Sprintf("%s %s %s\n\n", sidebarKeyStyle.Render("• Msg  :"), sidebarValStyle.Render(m.cfg.Step2.Messenger), sidebarReadyStyle.Render(truncateStr(m.msgConnStatus, 7))))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 3: Harness & TDD
-	tddStr := "N"
-	if m.cfg.Step3.TDDMode {
-		tddStr = "Y"
-	}
-	sbStr := "N"
-	if m.cfg.Step3.LocalSandboxTest {
-		sbStr = "Y"
-	}
+	// Step 3: Harness & TDD (전체 Config 4종)
 	sb.WriteString(sidebarSectionStyle.Render("Step 3: Harness & TDD") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Commit:"), sidebarValStyle.Render(m.cfg.Step3.CommitConvention)))
-	sb.WriteString(fmt.Sprintf("%s TDD(%s) Sbox(%s)\n\n", sidebarKeyStyle.Render("• Mode  :"), tddStr, sbStr))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• PRTpl :"), sidebarValStyle.Render(m.cfg.Step3.PRTemplateStyle)))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• TDD   :"), sidebarValStyle.Render(boolToStr(m.cfg.Step3.TDDMode))))
+	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Sbox  :"), sidebarValStyle.Render(boolToStr(m.cfg.Step3.LocalSandboxTest))))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 4: Release Pipeline
-	syncStr := "N"
-	if m.cfg.Step4.ReleaseNotesSync {
-		syncStr = "Y"
-	}
+	// Step 4: Release Pipeline (전체 Config 4종)
 	sb.WriteString(sidebarSectionStyle.Render("Step 4: Release Pipeline") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• SemVer:"), sidebarValStyle.Render(m.cfg.Step4.VersioningStrategy)))
-	sb.WriteString(fmt.Sprintf("%s Sync(%s)\n", sidebarKeyStyle.Render("• Slack :"), syncStr))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Change:"), sidebarValStyle.Render(boolToStr(m.cfg.Step4.AutoChangelog))))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Sync  :"), sidebarValStyle.Render(boolToStr(m.cfg.Step4.ReleaseNotesSync))))
+	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Alert :"), sidebarValStyle.Render(boolToStr(m.cfg.Step4.DeployAlert))))
 
 	return sb.String()
 }

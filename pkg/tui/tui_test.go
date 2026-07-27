@@ -20,27 +20,46 @@ func TestNewModelDefaultIsChatModeAndUnknownAppName(t *testing.T) {
 	}
 }
 
-func TestStep2SeparatedFixedTools(t *testing.T) {
+func TestRightSidebarRendersAllConfigs(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
-	m.currentStep = Step2
 
-	body := m.renderStepBody()
+	sidebarView := m.renderRightSidebarNav()
 
-	expectedItems := []string{
-		"CI Tool:",
-		"CD Tool:",
-		"Doc Tool:",
-		"Messenger:",
-		"jenkins",
-		"argocd",
-		"notion",
-		"slack",
+	expectedSectionsAndKeys := []string{
+		"CONFIG STATUS NAV",
+		"Session :",
+		"App Name:",
+		"Step 0: AI Licensing",
+		"• Prov :",
+		"• Model:",
+		"• Auth :",
+		"• Fallb:",
+		"Step 1: Arch Spec",
+		"• Style:",
+		"• Repo :",
+		"• Diag :",
+		"Step 2: MCP Connections",
+		"• Git  :",
+		"• K8s  :",
+		"• CI/CD:",
+		"• Doc  :",
+		"• Msg  :",
+		"Step 3: Harness & TDD",
+		"• Commit:",
+		"• PRTpl :",
+		"• TDD   :",
+		"• Sbox  :",
+		"Step 4: Release Pipeline",
+		"• SemVer:",
+		"• Change:",
+		"• Sync  :",
+		"• Alert :",
 	}
 
-	for _, item := range expectedItems {
-		if !strings.Contains(body, item) {
-			t.Errorf("expected Step 2 body to contain '%s', got:\n%s", item, body)
+	for _, key := range expectedSectionsAndKeys {
+		if !strings.Contains(sidebarView, key) {
+			t.Errorf("expected sidebar status nav to contain '%s', got:\n%s", key, sidebarView)
 		}
 	}
 }
