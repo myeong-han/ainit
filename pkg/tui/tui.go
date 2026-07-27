@@ -14,6 +14,7 @@ import (
 	"github.com/myeong-han/ainit/pkg/config"
 	"github.com/myeong-han/ainit/pkg/connection"
 	"github.com/myeong-han/ainit/pkg/provider"
+	"github.com/myeong-han/ainit/pkg/session"
 )
 
 type Step int
@@ -49,6 +50,7 @@ const (
 	ModePromptInput Mode = iota // Default Main Chatting Mode
 	ModeWizard                  // Step Config Form Mode (via /settings)
 	ModeKeyInput                // API Key / Token / Kubeconfig Input Modal
+	ModeSessionResume           // Interactive Session Resume List
 	ModeConfirm                 // Confirmation Prompt before execution
 	ModeGenerating
 	ModeDone
@@ -63,6 +65,10 @@ type Model struct {
 	cfg                    *config.Config
 	cmdEngine              *command.CommandEngine
 	connTester             *connection.ConnectionTester
+	sessMgr                *session.SessionManager
+	activeSession          *session.Session
+	resumeSummaries        []session.SessionSummary
+	resumeCursor           int
 	currentStep            Step
 	cursor                 int
 	mode                   Mode
@@ -212,7 +218,7 @@ func NewModel(cfg *config.Config) Model {
 	ki.EchoMode = textinput.EchoNormal
 
 	ta := textarea.New()
-	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /settings, /gen-all)..."
+	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /settings, /resume, /gen-all)..."
 	ta.SetWidth(60)
 	ta.SetHeight(4)
 	ta.Focus()
@@ -224,10 +230,15 @@ func NewModel(cfg *config.Config) Model {
 		},
 	}
 
+	sessMgr := session.NewSessionManager()
+	activeSess, _ := sessMgr.CreateSession(cfg.Step1.ProjectName)
+
 	return Model{
 		cfg:                    cfg,
 		cmdEngine:              command.NewCommandEngine(cfg),
 		connTester:             connection.NewConnectionTester(),
+		sessMgr:                sessMgr,
+		activeSession:          activeSess,
 		currentStep:            Step0,
 		cursor:                 0,
 		mode:                   ModePromptInput,
@@ -241,7 +252,7 @@ func NewModel(cfg *config.Config) Model {
 		slashOptions:           command.GetAvailableSlashCommands(),
 		width:                  100,
 		height:                 28,
-		statusMsg:              "Main Chatting View | Type '/git-init <name>' to set project name | Press Ctrl+S to submit",
+		statusMsg:              fmt.Sprintf("Main Chatting View | Active Session: %s | Press Ctrl+S to submit", activeSess.ID),
 		aiConnStatus:           "[UNTESTED]",
 		gitConnStatus:          "[READY]",
 		k8sConnStatus:          "[ON]",
@@ -271,11 +282,71 @@ func (m Model) getMaxCursorForStep() int {
 	}
 }
 
+func (m Model) persistCurrentSession() {
+	if m.activeSession == nil || m.sessMgr == nil {
+		return
+	}
+
+	var histItems []session.ChatMessageItem
+	for _, msg := range m.chatHistory {
+		histItems = append(histItems, session.ChatMessageItem{
+			Sender:  msg.Sender,
+			Content: msg.Content,
+		})
+	}
+
+	_ = m.sessMgr.SaveSession(m.activeSession.ID, m.cfg, histItems)
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(tea.Msg).(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	}
+
+	if m.mode == ModeSessionResume {
+		switch msg := msg.(tea.Msg).(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "esc":
+				m.mode = ModePromptInput
+				m.statusMsg = "Returned to Chat."
+				return m, textarea.Blink
+			case "up", "k":
+				if m.resumeCursor > 0 {
+					m.resumeCursor--
+				}
+				return m, nil
+			case "down", "j":
+				if m.resumeCursor < len(m.resumeSummaries)-1 {
+					m.resumeCursor++
+				}
+				return m, nil
+			case "enter":
+				if len(m.resumeSummaries) > 0 && m.resumeCursor < len(m.resumeSummaries) {
+					targetID := m.resumeSummaries[m.resumeCursor].ID
+					loadedSess, loadedCfg, loadedHist, err := m.sessMgr.LoadSession(targetID)
+					if err != nil {
+						m.statusMsg = fmt.Sprintf("Failed to resume session: %v", err)
+					} else {
+						m.activeSession = loadedSess
+						m.cfg = loadedCfg
+						m.cmdEngine = command.NewCommandEngine(loadedCfg)
+
+						m.chatHistory = nil
+						for _, item := range loadedHist {
+							m.chatHistory = append(m.chatHistory, ChatMessage{Sender: item.Sender, Content: item.Content})
+						}
+
+						m.mode = ModePromptInput
+						m.statusMsg = fmt.Sprintf("Resumed Session '%s' (%s) with bound /settings config!", loadedSess.ID, loadedSess.ProjectName)
+					}
+					return m, textarea.Blink
+				}
+			}
+		}
+		return m, nil
 	}
 
 	if m.mode == ModeKeyInput {
@@ -340,6 +411,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				m.keyInput.Reset()
+				m.persistCurrentSession()
 				return m, nil
 			}
 		}
@@ -360,12 +432,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.genResult = res
 				}
 				m.mode = ModeDone
+				m.persistCurrentSession()
 				return m, nil
 
 			case "n", "esc":
 				m.mode = ModePromptInput
 				m.statusMsg = "[!] Generation process cancelled by user."
 				m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: "[!] Generation pipeline cancelled."})
+				m.persistCurrentSession()
 				return m, textarea.Blink
 			}
 		}
@@ -429,6 +503,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.promptInput.Reset()
 					m.slashDropdownOpen = false
 					m.slashDropdownDismissed = false
+					m.persistCurrentSession()
+					return m, nil
+				}
+
+				if strings.HasPrefix(val, "/resume") {
+					parts := strings.Fields(val)
+					m.promptInput.Reset()
+					m.slashDropdownOpen = false
+					m.slashDropdownDismissed = false
+
+					if len(parts) > 1 {
+						targetID := parts[1]
+						loadedSess, loadedCfg, loadedHist, err := m.sessMgr.LoadSession(targetID)
+						if err != nil {
+							m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: fmt.Sprintf("❌ Error: %v", err)})
+							m.statusMsg = fmt.Sprintf("Failed to resume session '%s'", targetID)
+						} else {
+							m.activeSession = loadedSess
+							m.cfg = loadedCfg
+							m.cmdEngine = command.NewCommandEngine(loadedCfg)
+							m.chatHistory = nil
+							for _, item := range loadedHist {
+								m.chatHistory = append(m.chatHistory, ChatMessage{Sender: item.Sender, Content: item.Content})
+							}
+							m.statusMsg = fmt.Sprintf("Resumed Session '%s' (%s)!", loadedSess.ID, loadedSess.ProjectName)
+						}
+						return m, nil
+					}
+
+					summaries, err := m.sessMgr.ListSessions()
+					if err != nil || len(summaries) == 0 {
+						m.chatHistory = append(m.chatHistory, ChatMessage{Sender: "Agent", Content: "No previous sessions found to resume."})
+						m.statusMsg = "No saved sessions found."
+						return m, nil
+					}
+
+					m.resumeSummaries = summaries
+					m.resumeCursor = 0
+					m.mode = ModeSessionResume
+					m.statusMsg = "Select previous session to resume (Use ↑/↓, Enter to load)..."
 					return m, nil
 				}
 
@@ -440,6 +554,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.promptInput.Reset()
 						m.slashDropdownOpen = false
 						m.slashDropdownDismissed = false
+						m.persistCurrentSession()
 						return m, nil
 					}
 
@@ -454,6 +569,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.promptInput.Reset()
 					m.slashDropdownOpen = false
 					m.slashDropdownDismissed = false
+					m.persistCurrentSession()
 					return m, nil
 				}
 
@@ -464,6 +580,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.promptInput.Reset()
 				m.slashDropdownOpen = false
 				m.slashDropdownDismissed = false
+				m.persistCurrentSession()
 				return m, nil
 
 			case "ctrl+s", "ctrl+d":
@@ -510,6 +627,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.mode = ModePromptInput
 				m.statusMsg = "Returned to Main Chatting View"
+				m.persistCurrentSession()
 				return m, textarea.Blink
 
 			case "right", "tab":
@@ -540,9 +658,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.mode = ModePromptInput
 					m.promptInput.Focus()
 					m.statusMsg = "Returned to Main Chatting View"
+					m.persistCurrentSession()
 					return m, textarea.Blink
 				}
 				m.toggleCurrentField()
+				m.persistCurrentSession()
 			}
 		}
 		return m, nil
@@ -827,6 +947,25 @@ func (m Model) View() string {
 }
 
 func (m Model) renderLeftColumn(width int) string {
+	if m.mode == ModeSessionResume {
+		var sb strings.Builder
+		sb.WriteString(headerStyle.Render("📂 Saved Session Resume Manager"))
+		sb.WriteString("\n\n")
+		sb.WriteString("Select a previous session to resume (Use ↑/↓ to navigate, Enter to load):\n\n")
+
+		for i, s := range m.resumeSummaries {
+			if i == m.resumeCursor {
+				sb.WriteString(dropdownItemFocused.Render(fmt.Sprintf(" ▶ [%s] App: %-14s | Msgs: %-2d | %s", s.ID, truncateStr(s.ProjectName, 14), s.MsgCount, s.UpdatedAt.Format("15:04:05"))) + "\n")
+			} else {
+				sb.WriteString(dropdownItemUnfocused.Render(fmt.Sprintf("   [%s] App: %-14s | Msgs: %-2d | %s", s.ID, truncateStr(s.ProjectName, 14), s.MsgCount, s.UpdatedAt.Format("15:04:05"))) + "\n")
+			}
+		}
+
+		sb.WriteString("\n")
+		sb.WriteString(hintStyle.Render("[Press Enter to restore session & bound /settings config | Press Esc to cancel]"))
+		return sb.String()
+	}
+
 	if m.mode == ModeKeyInput {
 		var sb strings.Builder
 		sb.WriteString(headerStyle.Render("🔑 Kubeconfig Path & Key Verification Modal"))
@@ -919,6 +1058,12 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString("\n")
 	sb.WriteString(divider)
 	sb.WriteString("\n\n")
+
+	sessID := "none"
+	if m.activeSession != nil {
+		sessID = m.activeSession.ID
+	}
+	sb.WriteString(sidebarKeyStyle.Render("Session : ") + sidebarValStyle.Render(truncateStr(sessID, 12)) + "\n")
 
 	projName := m.cfg.Step1.ProjectName
 	if projName == "" {

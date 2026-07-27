@@ -21,12 +21,14 @@ const (
 	ActionGenGitOps
 	ActionGenAll
 	ActionGitInit
+	ActionResume
 	ActionHelp
 )
 
 type Result struct {
 	Action  ActionType
 	Message string
+	Target  string
 }
 
 type SlashOption struct {
@@ -48,6 +50,7 @@ func GetAvailableSlashCommands() []SlashOption {
 	return []SlashOption{
 		{Name: "/git-init", Description: "Set project name, clone/init remote repo & update work-dir", Example: "/git-init my-cool-app"},
 		{Name: "/settings", Description: "Configure Name, AI Provider, Arch, Git & Conventions", Example: "/settings --name my-app --provider openai"},
+		{Name: "/resume", Description: "Resume previous session & session-bound /settings config", Example: "/resume <session-id>"},
 		{Name: "/gen-docs", Description: "Generate Architecture Spec & Mermaid Diagrams", Example: "/gen-docs"},
 		{Name: "/gen-codes", Description: "Generate Agent Context Rules & Scaffolding", Example: "/gen-codes"},
 		{Name: "/gen-gitops", Description: "Generate K8s, Helm Charts & ArgoCD GitOps Manifests", Example: "/gen-gitops"},
@@ -76,6 +79,8 @@ func (e *CommandEngine) Execute(input string) (*Result, error) {
 		return e.handleGitInit(parts[1:])
 	case "/settings":
 		return e.handleSettings(parts[1:])
+	case "/resume":
+		return e.handleResume(parts[1:])
 	case "/gen-docs":
 		return e.handleGenDocs()
 	case "/gen-codes":
@@ -185,6 +190,19 @@ func (e *CommandEngine) handleSettings(args []string) (*Result, error) {
 	}, nil
 }
 
+func (e *CommandEngine) handleResume(args []string) (*Result, error) {
+	targetSession := ""
+	if len(args) > 0 {
+		targetSession = strings.TrimSpace(args[0])
+	}
+
+	return &Result{
+		Action:  ActionResume,
+		Message: "Opening Session Resume Manager...",
+		Target:  targetSession,
+	}, nil
+}
+
 func (e *CommandEngine) handleGenDocs() (*Result, error) {
 	err := generator.GenerateHarnessProject(".", e.cfg, "Architecture Spec & Mermaid diagrams generated via /gen-docs slash command")
 	if err != nil {
@@ -237,6 +255,7 @@ func (e *CommandEngine) handleHelp() (*Result, error) {
 	helpMsg := `Available Slash Commands:
 • /git-init <name>       : Set project name, clone/init remote repo & update work-dir
 • /settings --name <app> --provider <id> --arch <msa|monolith> --git <github|bitbucket>
+• /resume <session-id>   : Resume previous session & session-bound /settings config
 • /gen-docs   : Generate docs/ARCHITECTURE_SPEC.md & 4 Mermaid diagrams
 • /gen-codes  : Generate AGENTS.md, CLAUDE.md & cross-agent context rules
 • /gen-gitops : Generate Helm Charts & ArgoCD GitOps Application manifests

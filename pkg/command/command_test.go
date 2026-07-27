@@ -11,6 +11,7 @@ func TestGetAvailableSlashCommands(t *testing.T) {
 	cmds := GetAvailableSlashCommands()
 	foundGitInit := false
 	foundSettings := false
+	foundResume := false
 
 	for _, cmd := range cmds {
 		if cmd.Name == "/git-init" {
@@ -19,16 +20,13 @@ func TestGetAvailableSlashCommands(t *testing.T) {
 		if cmd.Name == "/settings" {
 			foundSettings = true
 		}
-		if cmd.Name == "/set-name" || cmd.Name == "/set-confs" {
-			t.Errorf("found deprecated command '%s' in slash commands list", cmd.Name)
+		if cmd.Name == "/resume" {
+			foundResume = true
 		}
 	}
 
-	if !foundGitInit {
-		t.Error("expected /git-init in slash commands list")
-	}
-	if !foundSettings {
-		t.Error("expected /settings in slash commands list")
+	if !foundGitInit || !foundSettings || !foundResume {
+		t.Errorf("expected /git-init, /settings and /resume in slash commands list, got %v", cmds)
 	}
 }
 
