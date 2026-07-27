@@ -238,7 +238,7 @@ func (m Model) getMaxCursorForStep() int {
 	case Step1:
 		return 3
 	case Step2:
-		return 1
+		return 3
 	case Step3:
 		return 3
 	case Step4:
@@ -596,6 +596,42 @@ func (m *Model) toggleCurrentField() {
 				m.cfg.Step2.K8sTarget = "local"
 			}
 			m.statusMsg = fmt.Sprintf("Selected K8s Target: [%s]", m.cfg.Step2.K8sTarget)
+
+		case 2:
+			// Toggle CI/CD Tools: argo-cd <-> jenkins <-> github-actions <-> gitlab-ci
+			if len(m.cfg.Step2.CICDTools) == 0 {
+				m.cfg.Step2.CICDTools = []string{"argo-cd", "jenkins"}
+			} else {
+				switch m.cfg.Step2.CICDTools[0] {
+				case "argo-cd":
+					m.cfg.Step2.CICDTools = []string{"jenkins", "github-actions"}
+				case "jenkins":
+					m.cfg.Step2.CICDTools = []string{"github-actions", "gitlab-ci"}
+				case "github-actions":
+					m.cfg.Step2.CICDTools = []string{"gitlab-ci", "argo-cd"}
+				default:
+					m.cfg.Step2.CICDTools = []string{"argo-cd", "jenkins"}
+				}
+			}
+			m.statusMsg = fmt.Sprintf("Updated CI/CD Tools: %v", m.cfg.Step2.CICDTools)
+
+		case 3:
+			// Toggle Doc Sync: notion <-> confluence <-> slack <-> jira
+			if len(m.cfg.Step2.DocTools) == 0 {
+				m.cfg.Step2.DocTools = []string{"notion", "confluence"}
+			} else {
+				switch m.cfg.Step2.DocTools[0] {
+				case "notion":
+					m.cfg.Step2.DocTools = []string{"confluence", "slack"}
+				case "confluence":
+					m.cfg.Step2.DocTools = []string{"slack", "jira"}
+				case "slack":
+					m.cfg.Step2.DocTools = []string{"jira", "notion"}
+				default:
+					m.cfg.Step2.DocTools = []string{"notion", "confluence"}
+				}
+			}
+			m.statusMsg = fmt.Sprintf("Updated Doc Sync Tools: %v", m.cfg.Step2.DocTools)
 		}
 
 	case Step3:
@@ -916,10 +952,10 @@ func (m Model) renderStepBody() string {
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Git Provider:", "["+m.cfg.Step2.GitProvider+"] (READY)"))
 		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"]"))
-		sb.WriteString(fmt.Sprintf("  %-18s %s\n", unfocusedLabelStyle.Render("CI/CD Tools:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.CICDTools))))
-		sb.WriteString(fmt.Sprintf("  %-18s %s\n", unfocusedLabelStyle.Render("Doc Sync:"), unfocusedValueStyle.Render(fmt.Sprintf("%v", m.cfg.Step2.DocTools))))
+		sb.WriteString(m.renderRow(2, "CI/CD Tools:", fmt.Sprintf("%v", m.cfg.Step2.CICDTools)))
+		sb.WriteString(m.renderRow(3, "Doc Sync:", fmt.Sprintf("%v", m.cfg.Step2.DocTools)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Press Enter on Git/K8s to toggle]"))
+		sb.WriteString(hintStyle.Render("[Press Enter on Git/K8s/CI/CD/Doc Sync to toggle]"))
 
 	case Step3:
 		sb.WriteString(headerStyle.Render("Step 3: Harness TDD & Conventions"))
