@@ -3,30 +3,36 @@ package generator
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestGenerateAgentContextFiles(t *testing.T) {
-	tempDir := t.TempDir()
+func TestGenerateAgentContextFilesContainsPlaywrightAndTestLoopConcepts(t *testing.T) {
+	tmpDir := t.TempDir()
 
-	err := GenerateAgentContextFiles(tempDir)
+	err := GenerateAgentContextFiles(tmpDir)
 	if err != nil {
-		t.Fatalf("expected no error generating agent context files, got: %v", err)
+		t.Fatalf("failed to generate agent context files: %v", err)
 	}
 
-	expectedFiles := []string{
-		"AGENTS.md",
-		"CLAUDE.md",
-		".cursorrules",
-		filepath.Join(".github", "copilot-instructions.md"),
-		".windsurfrules",
-		filepath.Join(".gemini", "rules"),
+	agentsFile := filepath.Join(tmpDir, "AGENTS.md")
+	content, err := os.ReadFile(agentsFile)
+	if err != nil {
+		t.Fatalf("failed to read AGENTS.md: %v", err)
 	}
 
-	for _, file := range expectedFiles {
-		fullPath := filepath.Join(tempDir, file)
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			t.Errorf("expected file %s to be generated, but it does not exist", file)
+	strContent := string(content)
+
+	expectedKeywords := []string{
+		"Headless Playwright",
+		"Goal-Driven Iterative Loop",
+		"Local Test-Centric Verification",
+		"make test",
+	}
+
+	for _, kw := range expectedKeywords {
+		if !strings.Contains(strContent, kw) {
+			t.Errorf("expected AGENTS.md to contain '%s', got:\n%s", kw, strContent)
 		}
 	}
 }

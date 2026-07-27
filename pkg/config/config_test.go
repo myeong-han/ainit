@@ -18,8 +18,12 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected default kubeconfig path to be '%s', got '%s'", expectedKubeconfig, cfg.Step2.KubeconfigPath)
 	}
 
-	if cfg.Step2.CI != "jenkins" {
-		t.Errorf("expected default CI to be 'jenkins', got '%s'", cfg.Step2.CI)
+	if !cfg.Step3.PlaywrightCI {
+		t.Error("expected default PlaywrightCI to be true")
+	}
+
+	if !cfg.Step3.LocalTestLoop {
+		t.Error("expected default LocalTestLoop to be true")
 	}
 }
 

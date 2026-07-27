@@ -36,6 +36,8 @@ type Step3Config struct {
 	PRTemplateStyle  string `json:"pr_template_style"`
 	TDDMode          bool   `json:"tdd_mode"`
 	LocalSandboxTest bool   `json:"local_sandbox_test"`
+	PlaywrightCI     bool   `json:"playwright_ci"`
+	LocalTestLoop    bool   `json:"local_test_loop"`
 }
 
 type Step4Config struct {
@@ -87,6 +89,8 @@ func NewDefaultConfig() *Config {
 			PRTemplateStyle:  "standard",
 			TDDMode:          true,
 			LocalSandboxTest: true,
+			PlaywrightCI:     true,
+			LocalTestLoop:    true,
 		},
 		Step4: Step4Config{
 			VersioningStrategy: "semver",

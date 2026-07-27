@@ -274,7 +274,7 @@ func (m Model) getMaxCursorForStep() int {
 	case Step2:
 		return 5
 	case Step3:
-		return 3
+		return 5
 	case Step4:
 		return 3
 	default:
@@ -860,6 +860,14 @@ func (m *Model) toggleCurrentField() {
 		case 3:
 			m.cfg.Step3.LocalSandboxTest = !m.cfg.Step3.LocalSandboxTest
 			m.statusMsg = fmt.Sprintf("Toggled Local Sandbox Build Check: [%v]", m.cfg.Step3.LocalSandboxTest)
+
+		case 4:
+			m.cfg.Step3.PlaywrightCI = !m.cfg.Step3.PlaywrightCI
+			m.statusMsg = fmt.Sprintf("Toggled Headless Playwright CI Rule: [%v]", m.cfg.Step3.PlaywrightCI)
+
+		case 5:
+			m.cfg.Step3.LocalTestLoop = !m.cfg.Step3.LocalTestLoop
+			m.statusMsg = fmt.Sprintf("Toggled Goal-Driven Local Test Loop: [%v]", m.cfg.Step3.LocalTestLoop)
 		}
 
 	case Step4:
@@ -1083,7 +1091,7 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(sidebarKeyStyle.Render("App Name: ") + sidebarValStyle.Render(truncateStr(projName, 12)) + "\n")
 	sb.WriteString(divider + "\n\n")
 
-	// Step 0: AI Licensing & Provider (전체 Config 4종 + Ping)
+	// Step 0: AI Licensing & Provider
 	sb.WriteString(sidebarSectionStyle.Render("Step 0: AI Licensing") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Prov :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.ProviderID, 11))))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Model:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.PrimaryModel, 11))))
@@ -1092,14 +1100,14 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Ping :"), sidebarReadyStyle.Render(truncateStr(m.aiConnStatus, 12))))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 1: Arch Spec (전체 Config 4종)
+	// Step 1: Arch Spec
 	sb.WriteString(sidebarSectionStyle.Render("Step 1: Arch Spec") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Style:"), sidebarValStyle.Render(m.cfg.Step1.ArchitectureStyle)))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Repo :"), sidebarValStyle.Render(m.cfg.Step1.RepoStructure)))
 	sb.WriteString(fmt.Sprintf("%s Seq(%s) Git(%s)\n\n", sidebarKeyStyle.Render("• Diag :"), boolToStr(m.cfg.Step1.GenerateSequence), boolToStr(m.cfg.Step1.GenerateGitOps)))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 2: MCP Tooling Connections (전체 Config 6종)
+	// Step 2: MCP Tooling Connections
 	sb.WriteString(sidebarSectionStyle.Render("Step 2: MCP Connections") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render(truncateStr(m.gitConnStatus, 7))))
 	sb.WriteString(fmt.Sprintf("%s %s | %s\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(truncateStr(filepath.Base(m.cfg.Step2.KubeconfigPath), 8)), sidebarReadyStyle.Render(truncateStr(m.k8sConnStatus, 7))))
@@ -1108,15 +1116,15 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(fmt.Sprintf("%s %s %s\n\n", sidebarKeyStyle.Render("• Msg  :"), sidebarValStyle.Render(m.cfg.Step2.Messenger), sidebarReadyStyle.Render(truncateStr(m.msgConnStatus, 7))))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 3: Harness & TDD (전체 Config 4종)
+	// Step 3: Harness & TDD (Playwright & Local Loop 추가)
 	sb.WriteString(sidebarSectionStyle.Render("Step 3: Harness & TDD") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Commit:"), sidebarValStyle.Render(m.cfg.Step3.CommitConvention)))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• PRTpl :"), sidebarValStyle.Render(m.cfg.Step3.PRTemplateStyle)))
-	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• TDD   :"), sidebarValStyle.Render(boolToStr(m.cfg.Step3.TDDMode))))
-	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Sbox  :"), sidebarValStyle.Render(boolToStr(m.cfg.Step3.LocalSandboxTest))))
+	sb.WriteString(fmt.Sprintf("%s TDD(%s) Sbox(%s)\n", sidebarKeyStyle.Render("• Mode  :"), boolToStr(m.cfg.Step3.TDDMode), boolToStr(m.cfg.Step3.LocalSandboxTest)))
+	sb.WriteString(fmt.Sprintf("%s PW(%s) Loop(%s)\n\n", sidebarKeyStyle.Render("• Dev   :"), boolToStr(m.cfg.Step3.PlaywrightCI), boolToStr(m.cfg.Step3.LocalTestLoop)))
 	sb.WriteString(divider + "\n\n")
 
-	// Step 4: Release Pipeline (전체 Config 4종)
+	// Step 4: Release Pipeline
 	sb.WriteString(sidebarSectionStyle.Render("Step 4: Release Pipeline") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• SemVer:"), sidebarValStyle.Render(m.cfg.Step4.VersioningStrategy)))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Change:"), sidebarValStyle.Render(boolToStr(m.cfg.Step4.AutoChangelog))))
@@ -1190,14 +1198,16 @@ func (m Model) renderStepBody() string {
 		sb.WriteString(hintStyle.Render("[Press Enter on Kubeconfig/Tokens to specify custom paths & test connectivity]"))
 
 	case Step3:
-		sb.WriteString(headerStyle.Render("Step 3: Harness TDD & Conventions"))
+		sb.WriteString(headerStyle.Render("Step 3: Harness TDD, CI & Dev Loops"))
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "Commit Conv:", "["+m.cfg.Step3.CommitConvention+"]"))
 		sb.WriteString(m.renderRow(1, "PR Template:", "["+m.cfg.Step3.PRTemplateStyle+"]"))
 		sb.WriteString(m.renderRow(2, "TDD First Mode:", fmt.Sprintf("[%v]", m.cfg.Step3.TDDMode)))
 		sb.WriteString(m.renderRow(3, "Local Sandbox:", fmt.Sprintf("[%v]", m.cfg.Step3.LocalSandboxTest)))
+		sb.WriteString(m.renderRow(4, "Headless Playwright CI:", fmt.Sprintf("[%v]", m.cfg.Step3.PlaywrightCI)))
+		sb.WriteString(m.renderRow(5, "Goal-Driven Dev Loop:", fmt.Sprintf("[%v]", m.cfg.Step3.LocalTestLoop)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Configures Conventional Commits & TDD]"))
+		sb.WriteString(hintStyle.Render("[Configures Headless Playwright CI & Goal-Driven Local Test Loop Verification]"))
 
 	case Step4:
 		sb.WriteString(headerStyle.Render("Step 4: Release & Submit Setup"))

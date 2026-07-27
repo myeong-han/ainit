@@ -5,155 +5,193 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/myeong-han/ainit/pkg/ai"
 	"github.com/myeong-han/ainit/pkg/config"
 )
 
-// GenerateHarnessProject generates docs/ARCHITECTURE_SPEC.md via pkg/ai Engine
-func GenerateHarnessProject(targetDir string, cfg *config.Config, userPrompt string) error {
+// GenerateHarnessProject produces architecture docs, agent rules, and code scaffolding
+func GenerateHarnessProject(targetDir string, cfg *config.Config, prompt string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create target directory: %w", err)
+	}
+
+	engine := ai.NewEngine(cfg)
+	markdownDoc, err := engine.GenerateArchitectureDoc(context.Background(), prompt)
+	if err != nil {
+		return fmt.Errorf("failed to generate architecture spec: %w", err)
+	}
+
 	docsDir := filepath.Join(targetDir, "docs")
 	if err := os.MkdirAll(docsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create docs dir: %w", err)
 	}
 
-	aiEngine := ai.NewEngine(cfg)
-	specContent, err := aiEngine.GenerateArchitectureDoc(context.Background(), userPrompt)
-	if err != nil {
-		return fmt.Errorf("failed to synthesize architecture spec with AI engine: %w", err)
-	}
-
-	specPath := filepath.Join(docsDir, "ARCHITECTURE_SPEC.md")
-	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+	docFile := filepath.Join(docsDir, "ARCHITECTURE_SPEC.md")
+	if err := os.WriteFile(docFile, []byte(markdownDoc), 0644); err != nil {
 		return fmt.Errorf("failed to write ARCHITECTURE_SPEC.md: %w", err)
 	}
 
+	if err := GenerateAgentContextFiles(targetDir); err != nil {
+		return fmt.Errorf("failed to generate agent context files: %w", err)
+	}
+
+	if err := GenerateGitOpsManifests(targetDir, cfg); err != nil {
+		return fmt.Errorf("failed to generate GitOps manifests: %w", err)
+	}
+
 	return nil
 }
 
-// GenerateAgentContextFiles generates AGENTS.md, CLAUDE.md, .cursorrules & cross-agent rules & code scaffolding
+// GenerateAgentContextFiles builds AGENTS.md, CLAUDE.md, .cursorrules, and code scaffolding
 func GenerateAgentContextFiles(targetDir string) error {
-	githubDir := filepath.Join(targetDir, ".github")
-	geminiDir := filepath.Join(targetDir, ".gemini")
+	agentsContent := `# AGENTS.md - Agentic Harness Execution Rules
 
-	_ = os.MkdirAll(githubDir, 0755)
-	_ = os.MkdirAll(geminiDir, 0755)
+## 1. Core Principles & CI/Dev Execution Rules
+- **Atomic Micro-Commits**: All code modifications MUST be committed in single-purpose, small micro-commits.
+- **TDD First**: Write failing test specifications prior to writing feature implementation code.
+- **CI Pipeline Rule (Headless Playwright)**: In CI scripts and automated test pipelines, ALWAYS execute E2E/UI verification via Headless Playwright ('npx playwright test --headed=false').
+- **Development Goal Loop**: Development phase MUST continuously run a Goal-Driven Iterative Loop until the explicit objective is satisfied.
+- **Local Test-Centric Verification**: Loop completion is strictly judged by Local Test-Centric Verification ('make test' & unit/integration test suite PASS). Never declare done without green local test execution.
 
-	agentsMd := "# AGENTS.md - Agentic Harness Execution Rules\n\n" +
-		"## 1. Core Principles\n" +
-		"- **Atomic Micro-Commits**: All code modifications MUST be committed in single-purpose, small micro-commits.\n" +
-		"- **TDD First**: Write failing test specifications prior to writing feature implementation code.\n" +
-		"- **Convention Compliance**: Adhere strictly to Conventional Commits format (`feat:`, `fix:`, `refactor:`, `test:`).\n" +
-		"- **Local Sandbox Verification**: Execute build & test suites locally before executing `git commit`.\n\n" +
-		"## 2. Commit Format\n" +
-		"```\n" +
-		"<type>(<scope>): <short summary>\n" +
-		"```\n"
+## 2. Commit Format
+` + "```" + `
+<type>(<scope>): <short summary>
+` + "```" + `
+- Types: feat, fix, refactor, test, docs, chore
+`
 
-	claudeMd := "# CLAUDE.md - Anthropic Agentic Guidelines\n\n" +
-		"- **Primary Goal**: Maintain high-precision code quality and zero symptom-patching.\n" +
-		"- **Workflow**: Plan -> Failing Test -> Clean Implementation -> Local Verification -> Commit.\n"
+	claudeContent := `# CLAUDE.md - Context & Coding Guidelines
 
-	cursorRules := "# .cursorrules - AI Coding Assistant System Prompt\n\n" +
-		"- Always maintain atomic micro-commits.\n" +
-		"- Run test suite prior to declaring task resolution.\n"
+## Build & Test Commands
+- Local Test Suite Execution (Local Test-Centric Verification): make test
+- Build Binary: make build
+- CI E2E Automation: npx playwright test --headed=false
 
-	copilotInst := "# GitHub Copilot Instructions\n\n- Follow Conventional Commits and TDD Workflow.\n"
-	windsurfRules := "# Windsurf Cascade Rules\n\n- Execute local build and test checks before committing code.\n"
-	geminiRules := "# Antigravity / Gemini Rules\n\n- Adhere to AGENTS.md execution rules.\n"
+## Architecture & Development Guidelines
+- Always execute Goal-Driven Iterative Loop in development until all local test suites pass cleanly.
+- Enforce Headless Playwright for E2E validation in CI pipelines.
+`
 
-	if err := os.WriteFile(filepath.Join(targetDir, "AGENTS.md"), []byte(agentsMd), 0644); err != nil {
-		return fmt.Errorf("failed to write AGENTS.md: %w", err)
+	cursorRulesContent := `# .cursorrules - Agent Execution Context
+
+rule "Headless Playwright in CI":
+  description: "Always run Playwright in headless mode within CI/CD pipelines"
+  command: "npx playwright test --headed=false"
+
+rule "Goal-Driven Iterative Loop":
+  description: "Continuously iterate in development phase until objective is achieved"
+
+rule "Local Test-Centric Verification":
+  description: "Judge loop completion strictly based on local test suite results ('make test')"
+`
+
+	files := map[string]string{
+		"AGENTS.md":                            agentsContent,
+		"CLAUDE.md":                            claudeContent,
+		".cursorrules":                         cursorRulesContent,
+		".github/copilot-instructions.md":      agentsContent,
+		".windsurfrules":                       cursorRulesContent,
+		filepath.Join(".gemini", "rules"):      agentsContent,
 	}
 
-	if err := os.WriteFile(filepath.Join(targetDir, "CLAUDE.md"), []byte(claudeMd), 0644); err != nil {
-		return fmt.Errorf("failed to write CLAUDE.md: %w", err)
+	for path, content := range files {
+		fullPath := filepath.Join(targetDir, path)
+		dir := filepath.Dir(fullPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create dir for %s: %w", path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", path, err)
+		}
 	}
 
-	if err := os.WriteFile(filepath.Join(targetDir, ".cursorrules"), []byte(cursorRules), 0644); err != nil {
-		return fmt.Errorf("failed to write .cursorrules: %w", err)
-	}
+	// Scaffolding: Makefile with Playwright & Dev-Loop targets
+	makefilePath := filepath.Join(targetDir, "Makefile")
+	makefileContent := `.PHONY: test build test-e2e dev-loop
 
-	_ = os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(copilotInst), 0644)
-	_ = os.WriteFile(filepath.Join(targetDir, ".windsurfrules"), []byte(windsurfRules), 0644)
-	_ = os.WriteFile(filepath.Join(geminiDir, "rules"), []byte(geminiRules), 0644)
+test:
+	@echo "🧪 Running Local Test-Centric Verification..."
+	go test -v ./...
 
-	// Generate Code Scaffolding
-	projName := filepath.Base(targetDir)
-	if projName == "." || projName == "" {
-		projName = "app"
-	}
+test-e2e:
+	@echo "🎭 Running CI Headless Playwright Tests..."
+	npx playwright test --headed=false
 
-	goMod := fmt.Sprintf("module %s\n\ngo 1.21\n", projName)
-	mainGo := fmt.Sprintf("package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"🚀 %s service initialized by Agentic-Init (ainit)\")\n}\n", projName)
+dev-loop:
+	@echo "🔁 Running Goal-Driven Iterative Development Loop..."
+	@make test
 
-	dockerfile := fmt.Sprintf("FROM golang:1.21-alpine AS builder\nWORKDIR /app\nCOPY . .\nRUN go build -o bin/server ./...\n\nFROM alpine:latest\nWORKDIR /app\nCOPY --from=builder /app/bin/server /app/server\nEXPOSE 8080\nCMD [\"/app/server\"]\n")
-
-	makefile := fmt.Sprintf(".PHONY: build test run\n\nbuild:\n\t@echo \"🔨 Building %s...\"\n\t@go build -o bin/%s main.go\n\ntest:\n\t@echo \"🧪 Running unit tests...\"\n\t@go test -v ./...\n\nrun: build\n\t@./bin/%s\n", projName, projName, projName)
-
-	_ = os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte(goMod), 0644)
-	_ = os.WriteFile(filepath.Join(targetDir, "main.go"), []byte(mainGo), 0644)
-	_ = os.WriteFile(filepath.Join(targetDir, "Dockerfile"), []byte(dockerfile), 0644)
-	_ = os.WriteFile(filepath.Join(targetDir, "Makefile"), []byte(makefile), 0644)
+build:
+	@echo "🔨 Building binary..."
+	go build -o bin/app ./cmd/...
+`
+	_ = os.WriteFile(makefilePath, []byte(makefileContent), 0644)
 
 	return nil
 }
 
-// GenerateGitOpsManifests generates Helm chart & ArgoCD application YAML
+// GenerateGitOpsManifests produces Helm Charts & ArgoCD Application YAML
 func GenerateGitOpsManifests(targetDir string, cfg *config.Config) error {
 	gitopsDir := filepath.Join(targetDir, "gitops")
-	helmDir := filepath.Join(gitopsDir, "helm")
+	helmDir := filepath.Join(gitopsDir, "helm", cfg.Step1.ProjectName)
 	argocdDir := filepath.Join(gitopsDir, "argocd")
 
 	if err := os.MkdirAll(helmDir, 0755); err != nil {
-		return err
+		return fmt.Errorf("failed to create helm dir: %w", err)
 	}
 	if err := os.MkdirAll(argocdDir, 0755); err != nil {
-		return err
+		return fmt.Errorf("failed to create argocd dir: %w", err)
 	}
 
-	projName := cfg.Step1.ProjectName
-	if projName == "" || projName == "unknown" {
-		projName = "harness-app"
-	}
+	// Chart.yaml
+	chartContent := fmt.Sprintf(`apiVersion: v2
+name: %s
+description: Helm chart for %s
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+`, cfg.Step1.ProjectName, cfg.Step1.ProjectName)
+	_ = os.WriteFile(filepath.Join(helmDir, "Chart.yaml"), []byte(chartContent), 0644)
 
-	chartYaml := fmt.Sprintf("apiVersion: v2\nname: %s\ndescription: Helm chart generated by Agentic-Init (ainit)\ntype: application\nversion: 0.1.0\nappVersion: \"1.0.0\"\n", projName)
+	// values.yaml
+	valuesContent := fmt.Sprintf(`replicaCount: 2
+image:
+  repository: %s/%s
+  pullPolicy: IfNotPresent
+  tag: "latest"
+service:
+  type: ClusterIP
+  port: 8080
+`, cfg.Step2.GitProvider, cfg.Step1.ProjectName)
+	_ = os.WriteFile(filepath.Join(helmDir, "values.yaml"), []byte(valuesContent), 0644)
 
-	valuesYaml := fmt.Sprintf("replicaCount: 2\n\nimage:\n  repository: %s/%s\n  pullPolicy: IfNotPresent\n  tag: \"latest\"\n\nservice:\n  type: ClusterIP\n  port: 8080\n\ningress:\n  enabled: true\n  className: \"nginx\"\n  hosts:\n    - host: %s.local\n      paths:\n        - path: /\n          pathType: ImplementationSpecific\n\nresources:\n  limits:\n    cpu: 500m\n    memory: 512Mi\n  requests:\n    cpu: 100m\n    memory: 128Mi\n", cfg.Step2.GitProvider, projName, projName)
-
-	argoApplication := fmt.Sprintf("apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: %s-gitops\n  namespace: argocd\nspec:\n  project: default\n  source:\n    repoURL: 'https://github.com/myeong-han/%s.git'\n    targetRevision: HEAD\n    path: gitops/helm\n  destination:\n    server: 'https://kubernetes.default.svc'\n    namespace: default\n  syncPolicy:\n    automated:\n      prune: true\n      selfHeal: true\n", projName, projName)
-
-	if err := os.WriteFile(filepath.Join(helmDir, "Chart.yaml"), []byte(chartYaml), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(helmDir, "values.yaml"), []byte(valuesYaml), 0644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(argocdDir, "application.yaml"), []byte(argoApplication), 0644); err != nil {
-		return err
-	}
+	// ArgoCD Application YAML
+	argoContent := fmt.Sprintf(`apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: %s-gitops
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/myeong-han/%s.git'
+    targetRevision: HEAD
+    path: gitops/helm/%s
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+`, cfg.Step1.ProjectName, cfg.Step1.ProjectName, cfg.Step1.ProjectName)
+	_ = os.WriteFile(filepath.Join(argocdDir, "application.yaml"), []byte(argoContent), 0644)
 
 	return nil
 }
 
-// GenerateAll executes GenerateHarnessProject, GenerateAgentContextFiles & GenerateGitOpsManifests sequentially
-func GenerateAll(targetDir string, cfg *config.Config, userPrompt string) error {
-	if err := GenerateHarnessProject(targetDir, cfg, userPrompt); err != nil {
-		return fmt.Errorf("step 1 /gen-docs failed: %w", err)
-	}
-	if err := GenerateAgentContextFiles(targetDir); err != nil {
-		return fmt.Errorf("step 2 /gen-codes failed: %w", err)
-	}
-	if err := GenerateGitOpsManifests(targetDir, cfg); err != nil {
-		return fmt.Errorf("step 3 /gen-gitops failed: %w", err)
-	}
-	return nil
-}
-
-func stringsTitle(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return fmt.Sprintf("%s%s", strings.ToUpper(s[:1]), s[1:])
+// GenerateAll executes the complete scaffolding pipeline
+func GenerateAll(targetDir string, cfg *config.Config, prompt string) error {
+	return GenerateHarnessProject(targetDir, cfg, prompt)
 }
