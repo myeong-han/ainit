@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/myeong-han/ainit/pkg/config"
@@ -19,18 +20,27 @@ func TestNewModelDefaultIsChatModeAndUnknownAppName(t *testing.T) {
 	}
 }
 
-func TestKeyInputModeAndRealConnectionTesting(t *testing.T) {
+func TestStep2SeparatedFixedTools(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	m := NewModel(cfg)
+	m.currentStep = Step2
 
-	// Switch to wizard mode Step 0 (AI Provider)
-	m.mode = ModeWizard
-	m.currentStep = Step0
-	m.cursor = 2 // Auth Method / API Key input
+	body := m.renderStepBody()
 
-	m.toggleCurrentField()
+	expectedItems := []string{
+		"CI Tool:",
+		"CD Tool:",
+		"Doc Tool:",
+		"Messenger:",
+		"jenkins",
+		"argocd",
+		"notion",
+		"slack",
+	}
 
-	if m.mode != ModeKeyInput {
-		t.Errorf("expected ModeKeyInput after selecting API Key field, got %v", m.mode)
+	for _, item := range expectedItems {
+		if !strings.Contains(body, item) {
+			t.Errorf("expected Step 2 body to contain '%s', got:\n%s", item, body)
+		}
 	}
 }

@@ -84,6 +84,7 @@ type Model struct {
 	aiConnStatus           string
 	gitConnStatus          string
 	docConnStatus          string
+	msgConnStatus          string
 }
 
 var (
@@ -205,7 +206,7 @@ func NewModel(cfg *config.Config) Model {
 	ti.Focus()
 
 	ki := textinput.New()
-	ki.Placeholder = "Enter API Key / Personal Access Token..."
+	ki.Placeholder = "Enter API Key / Token / Webhook URL..."
 	ki.EchoMode = textinput.EchoPassword
 	ki.EchoCharacter = '•'
 
@@ -243,6 +244,7 @@ func NewModel(cfg *config.Config) Model {
 		aiConnStatus:           "[UNTESTED]",
 		gitConnStatus:          "[READY]",
 		docConnStatus:          "[READY]",
+		msgConnStatus:          "[READY]",
 	}
 }
 
@@ -257,7 +259,7 @@ func (m Model) getMaxCursorForStep() int {
 	case Step1:
 		return 3
 	case Step2:
-		return 3
+		return 5
 	case Step3:
 		return 3
 	case Step4:
@@ -281,7 +283,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "esc":
 				m.mode = ModeWizard
-				m.statusMsg = "Cancelled API key input."
+				m.statusMsg = "Cancelled input."
 				return m, nil
 			case "enter":
 				keyVal := strings.TrimSpace(m.keyInput.Value())
@@ -309,10 +311,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					res := m.connTester.TestDocSync("notion", keyVal)
 					if res.Connected {
 						m.docConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
-						m.statusMsg = fmt.Sprintf("Doc Sync Token Verified! (%s)", m.docConnStatus)
+						m.statusMsg = fmt.Sprintf("Notion Token Verified! (%s)", m.docConnStatus)
 					} else {
 						m.docConnStatus = fmt.Sprintf("❌ FAILED (%s)", res.ErrorMessage)
-						m.statusMsg = fmt.Sprintf("Doc Sync Failed: %s", res.ErrorMessage)
+						m.statusMsg = fmt.Sprintf("Notion Sync Failed: %s", res.ErrorMessage)
+					}
+				} else if m.keyTarget == "msg" {
+					if keyVal != "" {
+						m.msgConnStatus = "🟢 200 OK"
+						m.statusMsg = "Slack Webhook URL configured successfully!"
+					} else {
+						m.msgConnStatus = "❌ UNSET"
+						m.statusMsg = "Slack Webhook URL cleared."
 					}
 				}
 				m.keyInput.Reset()
@@ -658,28 +668,24 @@ func (m *Model) toggleCurrentField() {
 			}
 
 		case 2:
-			if len(m.cfg.Step2.CICDTools) == 0 {
-				m.cfg.Step2.CICDTools = []string{"argo-cd", "jenkins"}
-			} else {
-				switch m.cfg.Step2.CICDTools[0] {
-				case "argo-cd":
-					m.cfg.Step2.CICDTools = []string{"jenkins", "github-actions"}
-				case "jenkins":
-					m.cfg.Step2.CICDTools = []string{"github-actions", "gitlab-ci"}
-				case "github-actions":
-					m.cfg.Step2.CICDTools = []string{"gitlab-ci", "argo-cd"}
-				default:
-					m.cfg.Step2.CICDTools = []string{"argo-cd", "jenkins"}
-				}
-			}
-			m.statusMsg = fmt.Sprintf("Updated CI/CD Tools: %v", m.cfg.Step2.CICDTools)
+			m.statusMsg = "CI Tool is fixed to [jenkins]."
 
 		case 3:
+			m.statusMsg = "CD Tool is fixed to [argocd]."
+
+		case 4:
 			m.mode = ModeKeyInput
 			m.keyTarget = "doc"
-			m.keyInput.Placeholder = "Enter Notion / Confluence Integration Token..."
+			m.keyInput.Placeholder = "Enter Notion Integration Token..."
 			m.keyInput.Focus()
-			m.statusMsg = "Type Integration Token and press Enter to test connection."
+			m.statusMsg = "Type Notion Token and press Enter to test connection."
+
+		case 5:
+			m.mode = ModeKeyInput
+			m.keyTarget = "msg"
+			m.keyInput.Placeholder = "Enter Slack Webhook URL..."
+			m.keyInput.Focus()
+			m.statusMsg = "Type Slack Webhook URL and press Enter to configure."
 		}
 
 	case Step3:
@@ -1011,10 +1017,12 @@ func (m Model) renderStepBody() string {
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "🔑 Git Token:", "["+m.cfg.Step2.GitProvider+"] "+m.gitConnStatus))
 		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"] (Press Enter to Test)"))
-		sb.WriteString(m.renderRow(2, "CI/CD Tools:", fmt.Sprintf("%v", m.cfg.Step2.CICDTools)))
-		sb.WriteString(m.renderRow(3, "🔑 Doc Sync Token:", fmt.Sprintf("%v %s", m.cfg.Step2.DocTools, m.docConnStatus)))
+		sb.WriteString(m.renderRow(2, "CI Tool:", "["+m.cfg.Step2.CI+"] [READY]"))
+		sb.WriteString(m.renderRow(3, "CD Tool:", "["+m.cfg.Step2.CD+"] [ON]"))
+		sb.WriteString(m.renderRow(4, "🔑 Doc Tool:", fmt.Sprintf("[%s] %s", m.cfg.Step2.Doc, m.docConnStatus)))
+		sb.WriteString(m.renderRow(5, "🔑 Messenger:", fmt.Sprintf("[%s] %s", m.cfg.Step2.Messenger, m.msgConnStatus)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Press Enter to input Tokens and test live connection]"))
+		sb.WriteString(hintStyle.Render("[Press Enter to input Tokens / Webhooks and test live connection]"))
 
 	case Step3:
 		sb.WriteString(headerStyle.Render("Step 3: Harness TDD & Conventions"))

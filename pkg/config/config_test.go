@@ -1,30 +1,34 @@
 package config
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := NewDefaultConfig()
 
-	if cfg.Step0.ProviderID != "anthropic" {
-		t.Errorf("expected default provider anthropic, got %s", cfg.Step0.ProviderID)
-	}
-
-	// Default project name must be 'unknown'
 	if cfg.Step1.ProjectName != "unknown" {
-		t.Errorf("expected default project name 'unknown', got '%s'", cfg.Step1.ProjectName)
+		t.Errorf("expected default project name to be 'unknown', got '%s'", cfg.Step1.ProjectName)
 	}
 
-	if cfg.Step3.CommitConvention != "conventional" {
-		t.Errorf("expected default commit convention conventional, got %s", cfg.Step3.CommitConvention)
+	if cfg.Step2.CI != "jenkins" {
+		t.Errorf("expected default CI to be 'jenkins', got '%s'", cfg.Step2.CI)
+	}
+
+	if cfg.Step2.CD != "argocd" {
+		t.Errorf("expected default CD to be 'argocd', got '%s'", cfg.Step2.CD)
+	}
+
+	if cfg.Step2.Doc != "notion" {
+		t.Errorf("expected default Doc to be 'notion', got '%s'", cfg.Step2.Doc)
+	}
+
+	if cfg.Step2.Messenger != "slack" {
+		t.Errorf("expected default Messenger to be 'slack', got '%s'", cfg.Step2.Messenger)
 	}
 }
 
 func TestConfigValidate(t *testing.T) {
 	cfg := NewDefaultConfig()
-	err := cfg.Validate()
-	if err != nil {
-		t.Errorf("expected config to be valid, got %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("unexpected error validating default config: %v", err)
 	}
 }

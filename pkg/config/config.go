@@ -1,64 +1,63 @@
 package config
 
-import (
-	"errors"
-	"strings"
-)
+import "errors"
 
 type Step0Config struct {
-	LicensingMode string // "subscription" | "apikey" | "local"
-	PrimaryModel  string // "claude-3-5-sonnet", "gpt-4o", etc.
-	FallbackModel string // "gpt-4o-mini", "claude-3-5-haiku", etc.
-	ProviderID    string // "anthropic", "openai", "gemini", "deepseek", "openrouter", "ollama"
+	ProviderID    string `json:"provider_id"`
+	PrimaryModel  string `json:"primary_model"`
+	LicensingMode string `json:"licensing_mode"`
+	FallbackModel string `json:"fallback_model"`
 }
 
 type Step1Config struct {
-	ProjectName       string // Defaults to "unknown"
-	ArchitectureStyle string // "msa" | "monolith" | "eda"
-	RepoStructure     string // "monorepo" | "multirepo"
-	GenerateSequence  bool
-	GenerateGitOps    bool
+	ProjectName       string `json:"project_name"`
+	ArchitectureStyle string `json:"architecture_style"`
+	RepoStructure     string `json:"repo_structure"`
+	GenerateSequence  bool   `json:"generate_sequence"`
+	GenerateGitOps    bool   `json:"generate_gitops"`
 }
 
 type Step2Config struct {
-	GitProvider string // "github" | "bitbucket"
-	K8sTarget   string // "local" | "remote" | "none"
-	CICDTools   []string
-	DocTools    []string
+	GitProvider string `json:"git_provider"`
+	K8sTarget   string `json:"k8s_target"`
+	CI          string `json:"ci"`
+	CD          string `json:"cd"`
+	Doc         string `json:"doc"`
+	Messenger   string `json:"messenger"`
 }
 
 type Step3Config struct {
-	CommitConvention string // "conventional" | "gitmoji" | "issue-prefix" | "custom"
-	PRTemplateStyle  string // "standard" | "minimal" | "jira"
-	TDDMode          bool
-	LocalSandboxTest bool
+	CommitConvention string `json:"commit_convention"`
+	PRTemplateStyle  string `json:"pr_template_style"`
+	TDDMode          bool   `json:"tdd_mode"`
+	LocalSandboxTest bool   `json:"local_sandbox_test"`
 }
 
 type Step4Config struct {
-	AutoChangelog      bool
-	ReleaseNotesSync   bool
-	DeployAlert        bool
-	VersioningStrategy string // "semver" | "calver"
+	VersioningStrategy string `json:"versioning_strategy"`
+	AutoChangelog      bool   `json:"auto_changelog"`
+	ReleaseNotesSync   bool   `json:"release_notes_sync"`
+	DeployAlert        bool   `json:"deploy_alert"`
 }
 
 type Config struct {
-	Step0 Step0Config
-	Step1 Step1Config
-	Step2 Step2Config
-	Step3 Step3Config
-	Step4 Step4Config
+	Step0 Step0Config `json:"step0"`
+	Step1 Step1Config `json:"step1"`
+	Step2 Step2Config `json:"step2"`
+	Step3 Step3Config `json:"step3"`
+	Step4 Step4Config `json:"step4"`
 }
 
 func NewDefaultConfig() *Config {
 	return &Config{
 		Step0: Step0Config{
-			LicensingMode: "subscription",
-			PrimaryModel:  "claude-3-5-sonnet",
-			FallbackModel: "gpt-4o-mini",
 			ProviderID:    "anthropic",
+			PrimaryModel:  "claude-3-5-sonnet",
+			LicensingMode: "subscription",
+			FallbackModel: "claude-3-5-haiku",
 		},
 		Step1: Step1Config{
-			ProjectName:       "unknown", // Initial loading default is "unknown"
+			ProjectName:       "unknown",
 			ArchitectureStyle: "msa",
 			RepoStructure:     "monorepo",
 			GenerateSequence:  true,
@@ -67,8 +66,10 @@ func NewDefaultConfig() *Config {
 		Step2: Step2Config{
 			GitProvider: "github",
 			K8sTarget:   "local",
-			CICDTools:   []string{"argo-cd", "jenkins"},
-			DocTools:    []string{"notion", "confluence"},
+			CI:          "jenkins",
+			CD:          "argocd",
+			Doc:         "notion",
+			Messenger:   "slack",
 		},
 		Step3: Step3Config{
 			CommitConvention: "conventional",
@@ -77,25 +78,20 @@ func NewDefaultConfig() *Config {
 			LocalSandboxTest: true,
 		},
 		Step4: Step4Config{
+			VersioningStrategy: "semver",
 			AutoChangelog:      true,
 			ReleaseNotesSync:   true,
 			DeployAlert:        true,
-			VersioningStrategy: "semver",
 		},
 	}
 }
 
 func (c *Config) Validate() error {
 	if c.Step0.ProviderID == "" {
-		return errors.New("Step 0: ProviderID cannot be empty")
+		return errors.New("step0.provider_id cannot be empty")
 	}
 	if c.Step1.ProjectName == "" {
-		c.Step1.ProjectName = "unknown"
-	}
-	if !strings.EqualFold(c.Step1.ArchitectureStyle, "msa") &&
-		!strings.EqualFold(c.Step1.ArchitectureStyle, "monolith") &&
-		!strings.EqualFold(c.Step1.ArchitectureStyle, "eda") {
-		return errors.New("Step 1: Invalid architecture style")
+		return errors.New("step1.project_name cannot be empty")
 	}
 	return nil
 }
