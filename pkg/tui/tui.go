@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/myeong-han/ainit/pkg/command"
 	"github.com/myeong-han/ainit/pkg/config"
+	"github.com/myeong-han/ainit/pkg/connection"
 	"github.com/myeong-han/ainit/pkg/provider"
 )
 
@@ -45,6 +47,7 @@ type Mode int
 const (
 	ModePromptInput Mode = iota // Default Main Chatting Mode
 	ModeWizard                  // Step Config Form Mode (via /settings)
+	ModeKeyInput                // API Key / Token Input Modal
 	ModeConfirm                 // Confirmation Prompt before execution
 	ModeGenerating
 	ModeDone
@@ -58,11 +61,14 @@ type ChatMessage struct {
 type Model struct {
 	cfg                    *config.Config
 	cmdEngine              *command.CommandEngine
+	connTester             *connection.ConnectionTester
 	currentStep            Step
 	cursor                 int
 	mode                   Mode
 	inputs                 []textinput.Model
 	promptInput            textarea.Model
+	keyInput               textinput.Model
+	keyTarget              string
 	chatHistory            []ChatMessage
 	slashDropdownOpen      bool
 	slashDropdownDismissed bool
@@ -75,6 +81,9 @@ type Model struct {
 	statusMsg              string
 	quitting               bool
 	genResult              string
+	aiConnStatus           string
+	gitConnStatus          string
+	docConnStatus          string
 }
 
 var (
@@ -195,6 +204,11 @@ func NewModel(cfg *config.Config) Model {
 	ti.SetValue(cfg.Step1.ProjectName)
 	ti.Focus()
 
+	ki := textinput.New()
+	ki.Placeholder = "Enter API Key / Personal Access Token..."
+	ki.EchoMode = textinput.EchoPassword
+	ki.EchoCharacter = '•'
+
 	ta := textarea.New()
 	ta.Placeholder = "Type '/' for Slash Commands (/git-init <name>, /settings, /gen-all)..."
 	ta.SetWidth(60)
@@ -211,11 +225,13 @@ func NewModel(cfg *config.Config) Model {
 	return Model{
 		cfg:                    cfg,
 		cmdEngine:              command.NewCommandEngine(cfg),
+		connTester:             connection.NewConnectionTester(),
 		currentStep:            Step0,
 		cursor:                 0,
 		mode:                   ModePromptInput,
 		inputs:                 []textinput.Model{ti},
 		promptInput:            ta,
+		keyInput:               ki,
 		chatHistory:            initialHistory,
 		slashDropdownOpen:      false,
 		slashDropdownDismissed: false,
@@ -224,6 +240,9 @@ func NewModel(cfg *config.Config) Model {
 		width:                  100,
 		height:                 28,
 		statusMsg:              "Main Chatting View | Type '/git-init <name>' to set project name | Press Ctrl+S to submit",
+		aiConnStatus:           "[UNTESTED]",
+		gitConnStatus:          "[READY]",
+		docConnStatus:          "[READY]",
 	}
 }
 
@@ -253,6 +272,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	}
+
+	if m.mode == ModeKeyInput {
+		var cmd tea.Cmd
+		switch msg := msg.(tea.Msg).(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "esc":
+				m.mode = ModeWizard
+				m.statusMsg = "Cancelled API key input."
+				return m, nil
+			case "enter":
+				keyVal := strings.TrimSpace(m.keyInput.Value())
+				m.mode = ModeWizard
+
+				if m.keyTarget == "ai" {
+					res := m.connTester.TestAIProvider(m.cfg.Step0.ProviderID, keyVal)
+					if res.Connected {
+						m.aiConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
+						m.statusMsg = fmt.Sprintf("AI Provider API Key Verified! (%s)", m.aiConnStatus)
+					} else {
+						m.aiConnStatus = fmt.Sprintf("❌ FAILED (%s)", res.ErrorMessage)
+						m.statusMsg = fmt.Sprintf("AI Connection Failed: %s", res.ErrorMessage)
+					}
+				} else if m.keyTarget == "git" {
+					res := m.connTester.TestGitProvider(context.Background(), m.cfg.Step2.GitProvider, keyVal)
+					if res.Connected {
+						m.gitConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
+						m.statusMsg = fmt.Sprintf("Git Provider Token Verified! (%s)", m.gitConnStatus)
+					} else {
+						m.gitConnStatus = fmt.Sprintf("❌ FAILED (%s)", res.ErrorMessage)
+						m.statusMsg = fmt.Sprintf("Git Connection Failed: %s", res.ErrorMessage)
+					}
+				} else if m.keyTarget == "doc" {
+					res := m.connTester.TestDocSync("notion", keyVal)
+					if res.Connected {
+						m.docConnStatus = fmt.Sprintf("🟢 200 OK (%dms)", res.LatencyMs)
+						m.statusMsg = fmt.Sprintf("Doc Sync Token Verified! (%s)", m.docConnStatus)
+					} else {
+						m.docConnStatus = fmt.Sprintf("❌ FAILED (%s)", res.ErrorMessage)
+						m.statusMsg = fmt.Sprintf("Doc Sync Failed: %s", res.ErrorMessage)
+					}
+				}
+				m.keyInput.Reset()
+				return m, nil
+			}
+		}
+		m.keyInput, cmd = m.keyInput.Update(msg)
+		return m, cmd
 	}
 
 	if m.mode == ModeConfirm {
@@ -522,15 +590,11 @@ func (m *Model) toggleCurrentField() {
 			}
 
 		case 2:
-			switch m.cfg.Step0.LicensingMode {
-			case "subscription":
-				m.cfg.Step0.LicensingMode = "apikey"
-			case "apikey":
-				m.cfg.Step0.LicensingMode = "local"
-			default:
-				m.cfg.Step0.LicensingMode = "subscription"
-			}
-			m.statusMsg = fmt.Sprintf("Auth Mode changed to [%s]", m.cfg.Step0.LicensingMode)
+			m.mode = ModeKeyInput
+			m.keyTarget = "ai"
+			m.keyInput.Placeholder = fmt.Sprintf("Enter %s API Key...", strings.ToUpper(m.cfg.Step0.ProviderID))
+			m.keyInput.Focus()
+			m.statusMsg = "Type your API Key and press Enter to test connection."
 
 		case 3:
 			switch m.cfg.Step0.FallbackModel {
@@ -579,26 +643,21 @@ func (m *Model) toggleCurrentField() {
 	case Step2:
 		switch m.cursor {
 		case 0:
-			if m.cfg.Step2.GitProvider == "github" {
-				m.cfg.Step2.GitProvider = "bitbucket"
-			} else {
-				m.cfg.Step2.GitProvider = "github"
-			}
-			m.statusMsg = fmt.Sprintf("Selected Git Provider: [%s]", m.cfg.Step2.GitProvider)
+			m.mode = ModeKeyInput
+			m.keyTarget = "git"
+			m.keyInput.Placeholder = fmt.Sprintf("Enter %s Personal Access Token...", strings.ToUpper(m.cfg.Step2.GitProvider))
+			m.keyInput.Focus()
+			m.statusMsg = "Type Git Token and press Enter to test connection."
 
 		case 1:
-			switch m.cfg.Step2.K8sTarget {
-			case "local":
-				m.cfg.Step2.K8sTarget = "remote"
-			case "remote":
-				m.cfg.Step2.K8sTarget = "none"
-			default:
-				m.cfg.Step2.K8sTarget = "local"
+			res := m.connTester.TestK8sCluster(m.cfg.Step2.K8sTarget)
+			if res.Connected {
+				m.statusMsg = fmt.Sprintf("Kubernetes Cluster Connected! (%dms)", res.LatencyMs)
+			} else {
+				m.statusMsg = fmt.Sprintf("K8s Connection Failed: %s", res.ErrorMessage)
 			}
-			m.statusMsg = fmt.Sprintf("Selected K8s Target: [%s]", m.cfg.Step2.K8sTarget)
 
 		case 2:
-			// Toggle CI/CD Tools: argo-cd <-> jenkins <-> github-actions <-> gitlab-ci
 			if len(m.cfg.Step2.CICDTools) == 0 {
 				m.cfg.Step2.CICDTools = []string{"argo-cd", "jenkins"}
 			} else {
@@ -616,22 +675,11 @@ func (m *Model) toggleCurrentField() {
 			m.statusMsg = fmt.Sprintf("Updated CI/CD Tools: %v", m.cfg.Step2.CICDTools)
 
 		case 3:
-			// Toggle Doc Sync: notion <-> confluence <-> slack <-> jira
-			if len(m.cfg.Step2.DocTools) == 0 {
-				m.cfg.Step2.DocTools = []string{"notion", "confluence"}
-			} else {
-				switch m.cfg.Step2.DocTools[0] {
-				case "notion":
-					m.cfg.Step2.DocTools = []string{"confluence", "slack"}
-				case "confluence":
-					m.cfg.Step2.DocTools = []string{"slack", "jira"}
-				case "slack":
-					m.cfg.Step2.DocTools = []string{"jira", "notion"}
-				default:
-					m.cfg.Step2.DocTools = []string{"notion", "confluence"}
-				}
-			}
-			m.statusMsg = fmt.Sprintf("Updated Doc Sync Tools: %v", m.cfg.Step2.DocTools)
+			m.mode = ModeKeyInput
+			m.keyTarget = "doc"
+			m.keyInput.Placeholder = "Enter Notion / Confluence Integration Token..."
+			m.keyInput.Focus()
+			m.statusMsg = "Type Integration Token and press Enter to test connection."
 		}
 
 	case Step3:
@@ -725,7 +773,7 @@ func (m Model) View() string {
 		Width(sidebarWidth).
 		Height(boxHeight)
 
-	if m.mode == ModeWizard {
+	if m.mode == ModeWizard || m.mode == ModeKeyInput {
 		var tabs []string
 		steps := []Step{Step0, Step1, Step2, Step3, Step4}
 		for _, s := range steps {
@@ -754,6 +802,17 @@ func (m Model) View() string {
 }
 
 func (m Model) renderLeftColumn(width int) string {
+	if m.mode == ModeKeyInput {
+		var sb strings.Builder
+		sb.WriteString(headerStyle.Render("🔑 API Key & Token Verification Modal"))
+		sb.WriteString("\n\n")
+		sb.WriteString(fmt.Sprintf("Target Service: %s\n\n", strings.ToUpper(m.keyTarget)))
+		sb.WriteString(m.keyInput.View())
+		sb.WriteString("\n\n")
+		sb.WriteString(hintStyle.Render("[Press Enter to test connection via HTTPS | Press Esc to cancel]"))
+		return sb.String()
+	}
+
 	if m.mode == ModeConfirm {
 		projName := m.cfg.Step1.ProjectName
 		if projName == "" {
@@ -847,7 +906,7 @@ func (m Model) renderRightSidebarNav() string {
 	sb.WriteString(sidebarSectionStyle.Render("Step 0: AI Licensing") + "\n")
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Prov :"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.ProviderID, 11))))
 	sb.WriteString(fmt.Sprintf("%s %s\n", sidebarKeyStyle.Render("• Model:"), sidebarValStyle.Render(truncateStr(m.cfg.Step0.PrimaryModel, 11))))
-	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Auth :"), sidebarReadyStyle.Render("["+m.cfg.Step0.LicensingMode+"]")))
+	sb.WriteString(fmt.Sprintf("%s %s\n\n", sidebarKeyStyle.Render("• Ping :"), sidebarReadyStyle.Render(truncateStr(m.aiConnStatus, 12))))
 	sb.WriteString(divider + "\n\n")
 
 	// Step 1: Arch Spec
@@ -866,7 +925,7 @@ func (m Model) renderRightSidebarNav() string {
 
 	// Step 2: MCP Tooling
 	sb.WriteString(sidebarSectionStyle.Render("Step 2: MCP Connections") + "\n")
-	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render("[READY]")))
+	sb.WriteString(fmt.Sprintf("%s %s %s\n", sidebarKeyStyle.Render("• Git  :"), sidebarValStyle.Render(m.cfg.Step2.GitProvider), sidebarReadyStyle.Render(truncateStr(m.gitConnStatus, 9))))
 	sb.WriteString(fmt.Sprintf("%s %s | %s\n\n", sidebarKeyStyle.Render("• K8s  :"), sidebarValStyle.Render(m.cfg.Step2.K8sTarget), sidebarReadyStyle.Render("ArgoCD:ON")))
 	sb.WriteString(divider + "\n\n")
 
@@ -932,10 +991,10 @@ func (m Model) renderStepBody() string {
 		sb.WriteString("\n\n")
 		sb.WriteString(m.renderRow(0, "AI Provider:", "["+provName+"]"))
 		sb.WriteString(m.renderRow(1, "Primary Model:", "["+truncateStr(m.cfg.Step0.PrimaryModel, 16)+"]"))
-		sb.WriteString(m.renderRow(2, "Auth Method:", "["+m.cfg.Step0.LicensingMode+"]"))
+		sb.WriteString(m.renderRow(2, "🔑 Enter API Key:", "["+m.aiConnStatus+"]"))
 		sb.WriteString(m.renderRow(3, "Fallback Model:", "["+m.cfg.Step0.FallbackModel+"]"))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Press Enter to cycle OpenCode Providers]"))
+		sb.WriteString(hintStyle.Render("[Press Enter to input API Key and perform live connection test]"))
 
 	case Step1:
 		sb.WriteString(headerStyle.Render("Step 1: Architecture Spec & Mermaid"))
@@ -950,12 +1009,12 @@ func (m Model) renderStepBody() string {
 	case Step2:
 		sb.WriteString(headerStyle.Render("Step 2: MCP Tooling Connections"))
 		sb.WriteString("\n\n")
-		sb.WriteString(m.renderRow(0, "Git Provider:", "["+m.cfg.Step2.GitProvider+"] (READY)"))
-		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"]"))
+		sb.WriteString(m.renderRow(0, "🔑 Git Token:", "["+m.cfg.Step2.GitProvider+"] "+m.gitConnStatus))
+		sb.WriteString(m.renderRow(1, "K8s Target:", "["+m.cfg.Step2.K8sTarget+"] (Press Enter to Test)"))
 		sb.WriteString(m.renderRow(2, "CI/CD Tools:", fmt.Sprintf("%v", m.cfg.Step2.CICDTools)))
-		sb.WriteString(m.renderRow(3, "Doc Sync:", fmt.Sprintf("%v", m.cfg.Step2.DocTools)))
+		sb.WriteString(m.renderRow(3, "🔑 Doc Sync Token:", fmt.Sprintf("%v %s", m.cfg.Step2.DocTools, m.docConnStatus)))
 		sb.WriteString("\n")
-		sb.WriteString(hintStyle.Render("[Press Enter on Git/K8s/CI/CD/Doc Sync to toggle]"))
+		sb.WriteString(hintStyle.Render("[Press Enter to input Tokens and test live connection]"))
 
 	case Step3:
 		sb.WriteString(headerStyle.Render("Step 3: Harness TDD & Conventions"))
